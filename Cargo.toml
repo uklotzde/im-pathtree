@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: The im-pathtree authors
+# SPDX-License-Identifier: MPL-2.0
+
+[package]
+name = "im-pathtree"
+description = "Immutable, path-addressable tree data structure"
+version = "0.0.1"
+license = "MPL-2.0"
+readme = "README.md"
+repository = "https://github.com/uklotzde/im-pathtree"
+categories = ["data-structures"]
+keywords = ["immutable", "tree", "path"]
+edition = "2021"
+include = ["/src", "/README.md", "/LICENSES"]
+
+[dependencies]
+derive_more = "0.99.17"
+im = "15.1.0"
+log = "0.4.19"
+thiserror = "1.0.44"
