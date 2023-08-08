@@ -87,7 +87,7 @@ where
 }
 
 /// Intrinsic data of an inner node.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct InnerNode<T>
 where
     T: PathTreeTypes,

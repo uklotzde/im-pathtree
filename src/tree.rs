@@ -13,7 +13,7 @@ use crate::{
 
 /// Type system for [`PathTree`].
 pub trait PathTreeTypes: Clone + Default + fmt::Debug {
-    type InnerValue: Clone + Default + fmt::Debug;
+    type InnerValue: Clone + fmt::Debug;
     type LeafValue: Clone + fmt::Debug;
     type PathSegment: PathSegment;
     type PathSegmentRef: PathSegmentRef<Self::PathSegment> + ?Sized;
@@ -160,6 +160,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     fn create_missing_parent_nodes_recursively(
         &mut self,
         child_path: &T::RootPath,
+        mut new_inner_value: impl FnMut() -> T::InnerValue,
     ) -> Result<Arc<TreeNode<T>>, ()> {
         let root_node = Arc::clone(
             self.lookup_node(self.root_node_id)
@@ -194,7 +195,10 @@ impl<T: PathTreeTypes> PathTree<T> {
                             id: child_node_id,
                             parent_id: Some(parent_node_id),
                             path_segment: path_segment.to_owned(),
-                            node: Node::Inner(Default::default()),
+                            node: Node::Inner(InnerNode {
+                                children: Vec::new(),
+                                value: new_inner_value(),
+                            }),
                         };
                         log::debug!("Inserting new child node {child_node:?} for path segment {path_segment:?}");
                         let child_node = Arc::new(child_node);
@@ -237,8 +241,9 @@ impl<T: PathTreeTypes> PathTree<T> {
         &mut self,
         path: &T::RootPath,
         new_value: NodeValue<T>,
+        new_inner_value: impl FnMut() -> T::InnerValue,
     ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
-        let Ok(parent_node) = self.create_missing_parent_nodes_recursively(path) else {
+        let Ok(parent_node) = self.create_missing_parent_nodes_recursively(path, new_inner_value) else {
             return Err(InsertOrUpdateNodeValueError::InvalidPath(new_value));
         };
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
