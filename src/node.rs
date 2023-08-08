@@ -24,10 +24,7 @@ where
 {
     pub(crate) fn from_value(value: NodeValue<T>) -> Self {
         match value {
-            NodeValue::Inner(value) => Self::Inner(InnerNode {
-                children: Vec::new(),
-                value,
-            }),
+            NodeValue::Inner(value) => Self::Inner(InnerNode::new(value)),
             NodeValue::Leaf(value) => Self::Leaf(LeafNode { value }),
         }
     }
@@ -100,6 +97,14 @@ impl<T> InnerNode<T>
 where
     T: PathTreeTypes,
 {
+    /// Construct an empty inner node with no children
+    pub const fn new(value: <T as PathTreeTypes>::InnerValue) -> Self {
+        Self {
+            children: Vec::new(),
+            value,
+        }
+    }
+
     pub fn children(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.children.iter().copied()
     }

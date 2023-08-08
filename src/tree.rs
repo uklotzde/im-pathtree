@@ -195,10 +195,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                             id: child_node_id,
                             parent_id: Some(parent_node_id),
                             path_segment: path_segment.to_owned(),
-                            node: Node::Inner(InnerNode {
-                                children: Vec::new(),
-                                value: new_inner_value(),
-                            }),
+                            node: Node::Inner(InnerNode::new(new_inner_value())),
                         };
                         log::debug!("Inserting new child node {child_node:?} for path segment {path_segment:?}");
                         let child_node = Arc::new(child_node);
