@@ -118,17 +118,13 @@ pub trait SegmentedPath<S: PathSegment, R: PathSegmentRef<S> + ?Sized>:
     #[must_use]
     fn segments(&self) -> Box<dyn Iterator<Item = &R> + '_>;
 
-    /// Iterate over all parent path segments.
+    /// Split the path into parent segments and the last child segment.
     ///
     /// The returned iterator excludes the last segment that is
     /// included by [`Self::segments()`].
     // TODO: How to avoid boxing the result?
     #[must_use]
-    fn parent_segments(&self) -> Box<dyn Iterator<Item = &R> + '_>;
-
-    /// The last segments.
-    #[must_use]
-    fn last_segment(&self) -> Option<&R>;
+    fn split_parent_child_segments(&self) -> (Box<dyn Iterator<Item = &R> + '_>, Option<&R>);
 }
 
 /// Absolute path with a root.

@@ -42,13 +42,14 @@ impl SegmentedPath<Cow<'static, str>, str> for SlashPath<'_> {
         Box::new(self.segments())
     }
 
-    fn parent_segments(&self) -> Box<dyn Iterator<Item = &str> + '_> {
-        let num_segments = self.segments().count();
-        Box::new(self.segments().take(num_segments.max(1) - 1))
-    }
-
-    fn last_segment(&self) -> Option<&str> {
-        self.segments().last()
+    fn split_parent_child_segments(&self) -> (Box<dyn Iterator<Item = &str> + '_>, Option<&str>) {
+        let (num_segments, child_segment) = self
+            .segments()
+            .fold((0, None), |(count, _), next| (count + 1, Some(next)));
+        (
+            Box::new(self.segments().take(num_segments.max(1) - 1)),
+            child_segment,
+        )
     }
 }
 

@@ -77,6 +77,15 @@ where
     _types: PhantomData<T>,
 }
 
+#[derive(Debug, Default)]
+struct TreeNodeParentChildContext<'a, T>
+where
+    T: PathTreeTypes,
+{
+    parent_node: Option<Arc<TreeNode<T>>>,
+    child_path_segment: Option<&'a T::PathSegmentRef>,
+}
+
 impl<T: PathTreeTypes> PathTree<T> {
     /// Create a new path tree with the given root node.
     #[must_use]
@@ -162,17 +171,21 @@ impl<T: PathTreeTypes> PathTree<T> {
         Some(last_visited_node)
     }
 
-    fn create_missing_parent_nodes_recursively(
+    fn create_missing_parent_nodes_recursively<'a>(
         &mut self,
-        child_path: &T::RootPath,
+        child_path: &'a T::RootPath,
         mut new_inner_value: impl FnMut() -> T::InnerValue,
-    ) -> Result<Option<Arc<TreeNode<T>>>, ()> {
+    ) -> Result<TreeNodeParentChildContext<'a, T>, ()> {
         if child_path.is_root() {
-            return Ok(None);
+            return Ok(TreeNodeParentChildContext {
+                parent_node: None,
+                child_path_segment: None,
+            });
         }
         let root_node = Arc::clone(self.root_node());
         let mut parent_node = root_node;
-        for path_segment in child_path.parent_segments() {
+        let (parent_path_segments, child_path_segment) = child_path.split_parent_child_segments();
+        for path_segment in parent_path_segments {
             // TODO: Avoid to use an optional here
             let mut new_parent_node = None;
             match &parent_node.node {
@@ -237,10 +250,14 @@ impl<T: PathTreeTypes> PathTree<T> {
                     .path_segment
             ));
         }
-        match parent_node.node {
-            Node::Inner(_) => Ok(Some(parent_node)),
-            Node::Leaf(_) => Ok(None),
-        }
+        let parent_node = match parent_node.node {
+            Node::Inner(_) => Some(parent_node),
+            Node::Leaf(_) => None,
+        };
+        Ok(TreeNodeParentChildContext {
+            parent_node,
+            child_path_segment,
+        })
     }
 
     /// Insert or update a node in the tree.
@@ -258,7 +275,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         new_value: NodeValue<T>,
         new_inner_value: impl FnMut() -> T::InnerValue,
     ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
-        let Ok(parent_node) = self.create_missing_parent_nodes_recursively(path, new_inner_value) else {
+        let Ok(TreeNodeParentChildContext { parent_node, child_path_segment}) = self.create_missing_parent_nodes_recursively(path, new_inner_value) else {
             return Err(InsertOrUpdateNodeValueError::InvalidPath(new_value));
         };
         let Some(parent_node) = parent_node else {
@@ -283,7 +300,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         // Wrap into an option as a workaround for the limitations of the borrow checker.
         // The value is consumed at most once in every code path.
         let mut new_value = Some(new_value);
-        let path_segment = path.last_segment().expect("should never be empty");
+        let path_segment = child_path_segment.expect("should never be empty");
         let mut child_node_to_update = None;
         for (child_index, child_node_id) in inner_node.children().enumerate() {
             let child_node = self.lookup_node(child_node_id).expect("child node exists");
