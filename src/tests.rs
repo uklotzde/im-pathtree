@@ -25,6 +25,16 @@ impl<'a> SlashPath<'a> {
             .split_terminator(Self::PATH_SEPARATOR_STR)
             .filter(|segment| !segment.is_empty())
     }
+
+    fn split_parent_child_segments(&self) -> (impl Iterator<Item = &str> + '_, Option<&str>) {
+        let (num_segments, child_segment) = self
+            .segments()
+            .fold((0, None), |(count, _), next| (count + 1, Some(next)));
+        (
+            Box::new(self.segments().take(num_segments.max(1) - 1)),
+            child_segment,
+        )
+    }
 }
 
 impl RootPath<Cow<'static, str>, str> for SlashPath<'_> {
@@ -43,13 +53,8 @@ impl SegmentedPath<Cow<'static, str>, str> for SlashPath<'_> {
     }
 
     fn split_parent_child_segments(&self) -> (Box<dyn Iterator<Item = &str> + '_>, Option<&str>) {
-        let (num_segments, child_segment) = self
-            .segments()
-            .fold((0, None), |(count, _), next| (count + 1, Some(next)));
-        (
-            Box::new(self.segments().take(num_segments.max(1) - 1)),
-            child_segment,
-        )
+        let (parent_segments, child_segment) = self.split_parent_child_segments();
+        (Box::new(parent_segments), child_segment)
     }
 }
 
