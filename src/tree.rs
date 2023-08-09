@@ -85,9 +85,8 @@ impl<T: PathTreeTypes> PathTree<T> {
         let root_node = Node::from_value(value);
         let root_node = TreeNode {
             id: root_node_id,
+            parent: None,
             node: root_node,
-            parent_id: None,
-            path_segment: T::PathSegment::empty(),
         };
         let mut nodes = HashMap::new();
         nodes.insert(root_node_id, Arc::new(root_node));
@@ -139,7 +138,9 @@ impl<T: PathTreeTypes> PathTree<T> {
                     let mut found = false;
                     for child_id in &inner_node.children {
                         let child_node = self.lookup_node(*child_id).expect("child node exists");
-                        if path_segment.equals(&child_node.path_segment) {
+                        if path_segment
+                            .equals(&child_node.parent.as_ref().expect("has parent").path_segment)
+                        {
                             last_visited_node = child_node;
                             found = true;
                             break;
@@ -150,7 +151,13 @@ impl<T: PathTreeTypes> PathTree<T> {
                     }
                 }
             }
-            debug_assert!(path_segment.equals(&last_visited_node.path_segment));
+            debug_assert!(path_segment.equals(
+                &last_visited_node
+                    .parent
+                    .as_ref()
+                    .expect("has parent")
+                    .path_segment
+            ));
         }
         Some(last_visited_node)
     }
@@ -176,7 +183,9 @@ impl<T: PathTreeTypes> PathTree<T> {
                 Node::Inner(inner_node) => {
                     for child_id in &inner_node.children {
                         let child_node = self.lookup_node(*child_id).expect("child node exists");
-                        if path_segment.equals(&child_node.path_segment) {
+                        if path_segment
+                            .equals(&child_node.parent.as_ref().expect("has parent").path_segment)
+                        {
                             log::debug!(
                                 "Found child node {child_node:?} for path segment {path_segment:?}"
                             );
@@ -191,8 +200,10 @@ impl<T: PathTreeTypes> PathTree<T> {
                         debug_assert_ne!(parent_node_id, child_node_id);
                         let child_node = TreeNode {
                             id: child_node_id,
-                            parent_id: Some(parent_node_id),
-                            path_segment: path_segment.to_owned(),
+                            parent: Some(TreeNodeParent {
+                                id: parent_node_id,
+                                path_segment: path_segment.to_owned(),
+                            }),
                             node: Node::Inner(InnerNode::new(new_inner_value())),
                         };
                         log::debug!("Inserting new child node {child_node:?} for path segment {path_segment:?}");
@@ -218,7 +229,13 @@ impl<T: PathTreeTypes> PathTree<T> {
                 }
             }
             parent_node = new_parent_node.expect("new parent node has been assigned");
-            debug_assert!(path_segment.equals(&parent_node.path_segment));
+            debug_assert!(path_segment.equals(
+                &parent_node
+                    .parent
+                    .as_ref()
+                    .expect("has parent")
+                    .path_segment
+            ));
         }
         match parent_node.node {
             Node::Inner(_) => Ok(Some(parent_node)),
@@ -270,7 +287,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         let mut child_node_to_update = None;
         for (child_index, child_node_id) in inner_node.children().enumerate() {
             let child_node = self.lookup_node(child_node_id).expect("child node exists");
-            if path_segment.equals(&child_node.path_segment) {
+            if path_segment.equals(&child_node.parent.as_ref().expect("has parent").path_segment) {
                 let new_value = new_value.take().expect("not consumed yet");
                 let new_child_node = child_node
                     .try_clone_with_new_value(new_value)
@@ -288,8 +305,10 @@ impl<T: PathTreeTypes> PathTree<T> {
             let child_node_id = NodeId::new();
             let child_node = TreeNode {
                 id: child_node_id,
-                parent_id: Some(parent_node.id),
-                path_segment: path_segment.to_owned(),
+                parent: Some(TreeNodeParent {
+                    id: parent_node.id,
+                    path_segment: path_segment.to_owned(),
+                }),
                 node: Node::from_value(value),
             };
             debug_assert!(!self.contains_node(child_node_id));
@@ -339,8 +358,9 @@ impl<T: PathTreeTypes> PathTree<T> {
         let (parent_node, child_node) = {
             let child_node = self.lookup_node(node_id)?;
             let parent_node = child_node
-                .parent_id
-                .and_then(|node_id| self.lookup_node(node_id))?;
+                .parent
+                .as_ref()
+                .and_then(|parent| self.lookup_node(parent.id))?;
             debug_assert!(matches!(parent_node.node, Node::Inner(_)));
             let Node::Inner(inner_node) = &parent_node.node else {
                 unreachable!();
@@ -403,23 +423,26 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 }
 
+/// Link of non-root node in the tree.
+#[derive(Debug, Clone)]
+pub struct TreeNodeParent<T: PathTreeTypes> {
+    /// The id of the parent node.
+    pub id: NodeId,
+
+    /// Path segment for addressing the child from the parent.
+    pub path_segment: <T as PathTreeTypes>::PathSegment,
+}
+
 /// Immutable node in the tree.
 #[derive(Debug, Clone)]
 pub struct TreeNode<T: PathTreeTypes> {
     /// Identifier for direct lookup.
     pub id: NodeId,
 
-    /// The parent node.
+    /// Link to the parent node.
     ///
-    /// Only the root node has no parent.
-    ///
-    /// This must always be an inner node, but we cannot express this in the type system.
-    pub parent_id: Option<NodeId>,
-
-    /// RootPath segment for addressing.
-    ///
-    /// Must be empty for the root node.
-    pub path_segment: <T as PathTreeTypes>::PathSegment,
+    /// Must be `None` for the root node and `Some` for all other nodes.
+    pub parent: Option<TreeNodeParent<T>>,
 
     /// The actual content of this node.
     pub node: Node<T>,
@@ -438,8 +461,7 @@ impl<T: PathTreeTypes> TreeNode<T> {
             Node::Leaf(LeafNode { .. }) => match new_value {
                 NodeValue::Leaf(value) => Self {
                     id: self.id,
-                    parent_id: self.parent_id,
-                    path_segment: self.path_segment.clone(),
+                    parent: self.parent.clone(),
                     node: Node::Leaf(LeafNode { value }),
                 },
                 new_value @ NodeValue::Inner(..) => {
@@ -451,8 +473,7 @@ impl<T: PathTreeTypes> TreeNode<T> {
                     let children = children.clone();
                     TreeNode {
                         id: self.id,
-                        parent_id: self.parent_id,
-                        path_segment: self.path_segment.clone(),
+                        parent: self.parent.clone(),
                         node: Node::Inner(InnerNode { children, value }),
                     }
                 }
