@@ -37,3 +37,6 @@ pub use tree::{
     InsertOrUpdateNodeValueError, ParentChildTreeNode, PathTree, PathTreeTypes, RemovedSubTree,
     TreeNode,
 };
+
+#[cfg(test)]
+mod tests;

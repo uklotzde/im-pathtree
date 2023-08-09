@@ -39,7 +39,7 @@ pub struct ParentChildTreeNode<T>
 where
     T: PathTreeTypes,
 {
-    pub parent_node: Arc<TreeNode<T>>,
+    pub parent_node: Option<Arc<TreeNode<T>>>,
     pub child_node: Arc<TreeNode<T>>,
 }
 
@@ -80,8 +80,9 @@ where
 impl<T: PathTreeTypes> PathTree<T> {
     /// Create a new path tree with the given root node.
     #[must_use]
-    pub fn new(root_node: Node<T>) -> Self {
+    pub fn new(value: NodeValue<T>) -> Self {
         let root_node_id = NodeId::new();
+        let root_node = Node::from_value(value);
         let root_node = TreeNode {
             id: root_node_id,
             node: root_node,
@@ -151,21 +152,18 @@ impl<T: PathTreeTypes> PathTree<T> {
             }
             debug_assert!(path_segment.equals(&last_visited_node.path_segment));
         }
-        match last_visited_node.node {
-            Node::Inner(_) => None, // partial path, i.e. path is too short
-            Node::Leaf(_) => Some(last_visited_node),
-        }
+        Some(last_visited_node)
     }
 
     fn create_missing_parent_nodes_recursively(
         &mut self,
         child_path: &T::RootPath,
         mut new_inner_value: impl FnMut() -> T::InnerValue,
-    ) -> Result<Arc<TreeNode<T>>, ()> {
-        let root_node = Arc::clone(
-            self.lookup_node(self.root_node_id)
-                .expect("root node exists"),
-        );
+    ) -> Result<Option<Arc<TreeNode<T>>>, ()> {
+        if child_path.is_root() {
+            return Ok(None);
+        }
+        let root_node = Arc::clone(self.root_node());
         let mut parent_node = root_node;
         for path_segment in child_path.parent_segments() {
             // TODO: Avoid to use an optional here
@@ -222,7 +220,10 @@ impl<T: PathTreeTypes> PathTree<T> {
             parent_node = new_parent_node.expect("new parent node has been assigned");
             debug_assert!(path_segment.equals(&parent_node.path_segment));
         }
-        Ok(parent_node)
+        match parent_node.node {
+            Node::Inner(_) => Ok(Some(parent_node)),
+            Node::Leaf(_) => Ok(None),
+        }
     }
 
     /// Insert or update a node in the tree.
@@ -243,56 +244,39 @@ impl<T: PathTreeTypes> PathTree<T> {
         let Ok(parent_node) = self.create_missing_parent_nodes_recursively(path, new_inner_value) else {
             return Err(InsertOrUpdateNodeValueError::InvalidPath(new_value));
         };
+        let Some(parent_node) = parent_node else {
+            // Update the root node
+            let new_root_node = self.root_node().try_clone_with_new_value(new_value).map_err(InsertOrUpdateNodeValueError::ValueTypeMismatch)?;
+            let new_root_node = Arc::new(new_root_node);
+            let old_root_node = self.nodes.insert(new_root_node.id, Arc::clone(&new_root_node));
+            log::debug!(
+                "Updated root node {old_root_node:?} to {new_root_node:?}",
+                old_root_node = old_root_node.as_deref(),
+                new_root_node = *new_root_node,
+            );
+            return Ok(ParentChildTreeNode {
+                parent_node: None,
+                child_node: new_root_node,
+            });
+        };
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
         let Node::Inner(inner_node) = &parent_node.node else {
             unreachable!();
         };
-        let path_segment = path.last_segment().expect("should never be empty");
-        let mut child_node_to_update = None;
         // Wrap into an option as a workaround for the limitations of the borrow checker.
         // The value is consumed at most once in every code path.
         let mut new_value = Some(new_value);
+        let path_segment = path.last_segment().expect("should never be empty");
+        let mut child_node_to_update = None;
         for (child_index, child_node_id) in inner_node.children().enumerate() {
             let child_node = self.lookup_node(child_node_id).expect("child node exists");
             if path_segment.equals(&child_node.path_segment) {
-                match &child_node.node {
-                    Node::Leaf(LeafNode { .. }) => {
-                        match new_value.take().expect("not consumed yet") {
-                            NodeValue::Leaf(value) => {
-                                let child_node: TreeNode<T> = TreeNode {
-                                    node: Node::Leaf(LeafNode { value }),
-                                    ..(**child_node).clone()
-                                };
-                                child_node_to_update = Some((child_index, child_node));
-                                break;
-                            }
-                            new_value @ NodeValue::Inner(..) => {
-                                return Err(InsertOrUpdateNodeValueError::ValueTypeMismatch(
-                                    new_value,
-                                ));
-                            }
-                        }
-                    }
-                    Node::Inner(InnerNode { children, .. }) => {
-                        match new_value.take().expect("not consumed yet") {
-                            NodeValue::Inner(value) => {
-                                let children = children.clone();
-                                let child_node: TreeNode<T> = TreeNode {
-                                    node: Node::Inner(InnerNode { children, value }),
-                                    ..(**child_node).clone()
-                                };
-                                child_node_to_update = Some((child_index, child_node));
-                                break;
-                            }
-                            new_value @ NodeValue::Leaf(..) => {
-                                log::warn!("Type mismatch while updating value of node {child_node:?}: {new_value:?}");
-                                return Err(InsertOrUpdateNodeValueError::ValueTypeMismatch(
-                                    new_value,
-                                ));
-                            }
-                        }
-                    }
-                }
+                let new_value = new_value.take().expect("not consumed yet");
+                let new_child_node = child_node
+                    .try_clone_with_new_value(new_value)
+                    .map_err(InsertOrUpdateNodeValueError::ValueTypeMismatch)?;
+                child_node_to_update = Some((child_index, new_child_node));
+                break;
             }
         }
         let (child_index, child_node) = if let Some(child_node_to_update) = child_node_to_update {
@@ -339,7 +323,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             new_parent_node = *new_parent_node,
         );
         Ok(ParentChildTreeNode {
-            parent_node: new_parent_node,
+            parent_node: Some(new_parent_node),
             child_node: new_child_node,
         })
     }
@@ -419,7 +403,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 }
 
-/// Node in the tree.
+/// Immutable node in the tree.
 #[derive(Debug, Clone)]
 pub struct TreeNode<T: PathTreeTypes> {
     /// Identifier for direct lookup.
@@ -439,4 +423,44 @@ pub struct TreeNode<T: PathTreeTypes> {
 
     /// The actual content of this node.
     pub node: Node<T>,
+}
+
+impl<T: PathTreeTypes> TreeNode<T> {
+    /// Clone the node with a new value.
+    ///
+    /// Fails if the type of the new value doesn't match the value type
+    /// of the node.
+    fn try_clone_with_new_value(&self, new_value: NodeValue<T>) -> Result<Self, NodeValue<T>>
+    where
+        T: PathTreeTypes,
+    {
+        let new_tree_node = match &self.node {
+            Node::Leaf(LeafNode { .. }) => match new_value {
+                NodeValue::Leaf(value) => Self {
+                    id: self.id,
+                    parent_id: self.parent_id,
+                    path_segment: self.path_segment.clone(),
+                    node: Node::Leaf(LeafNode { value }),
+                },
+                new_value @ NodeValue::Inner(..) => {
+                    return Err(new_value);
+                }
+            },
+            Node::Inner(InnerNode { children, .. }) => match new_value {
+                NodeValue::Inner(value) => {
+                    let children = children.clone();
+                    TreeNode {
+                        id: self.id,
+                        parent_id: self.parent_id,
+                        path_segment: self.path_segment.clone(),
+                        node: Node::Inner(InnerNode { children, value }),
+                    }
+                }
+                new_value @ NodeValue::Leaf(..) => {
+                    return Err(new_value);
+                }
+            },
+        };
+        Ok(new_tree_node)
+    }
 }

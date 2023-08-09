@@ -28,6 +28,20 @@ where
             NodeValue::Leaf(value) => Self::Leaf(LeafNode { value }),
         }
     }
+
+    pub fn inner_value(&self) -> Option<&T::InnerValue> {
+        match self {
+            Self::Inner(InnerNode { value, .. }) => Some(value),
+            Self::Leaf(LeafNode { .. }) => None,
+        }
+    }
+
+    pub fn leaf_value(&self) -> Option<&T::LeafValue> {
+        match self {
+            Self::Leaf(LeafNode { value, .. }) => Some(value),
+            Self::Inner(InnerNode { .. }) => None,
+        }
+    }
 }
 
 impl<T> From<InnerNode<T>> for Node<T>
