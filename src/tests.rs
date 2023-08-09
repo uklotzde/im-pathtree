@@ -127,7 +127,7 @@ fn single_leaf_node() {
     let mut path_tree = PathTree::new(NodeValue::Leaf(23));
     let root_node_id = path_tree.root_node_id();
 
-    assert_eq!(1, path_tree.number_of_nodes());
+    assert_eq!(1, path_tree.node_count());
     assert_eq!(
         Some(0),
         path_tree.count_child_nodes_recursively(root_node_id)
@@ -142,7 +142,7 @@ fn single_leaf_node() {
         .insert_or_update_node_value(&SlashPath::ROOT, NodeValue::Inner(-1), Default::default)
         .is_err());
 
-    assert_eq!(1, path_tree.number_of_nodes());
+    assert_eq!(1, path_tree.node_count());
     assert_eq!(
         Some(0),
         path_tree.count_child_nodes_recursively(root_node_id)
@@ -164,7 +164,7 @@ fn multiple_nodes() {
     let mut path_tree = PathTree::new(NodeValue::Inner(-23));
     let root_node_id = path_tree.root_node_id();
 
-    assert_eq!(1, path_tree.number_of_nodes());
+    assert_eq!(1, path_tree.node_count());
     assert_eq!(
         Some(0),
         path_tree.count_child_nodes_recursively(root_node_id)
@@ -180,7 +180,7 @@ fn multiple_nodes() {
         )
         .is_ok());
 
-    assert_eq!(3, path_tree.number_of_nodes());
+    assert_eq!(3, path_tree.node_count());
     assert_eq!(
         Some(2),
         path_tree.count_child_nodes_recursively(root_node_id)
@@ -217,7 +217,7 @@ fn multiple_nodes() {
         .insert_or_update_node_value(&SlashPath::ROOT, NodeValue::Leaf(42), Default::default)
         .is_err());
 
-    assert_eq!(3, path_tree.number_of_nodes());
+    assert_eq!(3, path_tree.node_count());
     assert_eq!(
         Some(2),
         path_tree.count_child_nodes_recursively(root_node_id)

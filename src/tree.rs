@@ -364,14 +364,14 @@ impl<T: PathTreeTypes> PathTree<T> {
         })
     }
 
-    /// Remove a node from the tree.
+    /// Remove a node and its children from the tree.
     ///
     /// Removes the entire subtree rooted at the given node.
     ///
     /// The root node cannot be removed.
     ///
     /// Returns the ID of the parent node and the IDs of the removed nodes.
-    pub fn remove_sub_tree(&mut self, node_id: NodeId) -> Option<RemovedSubTree<T>> {
+    pub fn remove_subtree(&mut self, node_id: NodeId) -> Option<RemovedSubTree<T>> {
         let (parent_node, child_node) = {
             let child_node = self.lookup_node(node_id)?;
             let parent_node = child_node
@@ -405,13 +405,13 @@ impl<T: PathTreeTypes> PathTree<T> {
         let removed_child_node_ids = std::iter::once(child_node.id)
             .chain(child_node.node.children_recursively(self))
             .collect::<Vec<_>>();
-        let num_nodes_before = self.number_of_nodes();
+        let node_count_before = self.node_count();
         for node_id in &removed_child_node_ids {
             self.nodes.remove(node_id);
         }
-        let num_nodes_after = self.number_of_nodes();
-        debug_assert!(num_nodes_before >= num_nodes_after);
-        let number_of_nodes_removed = num_nodes_before - num_nodes_after;
+        let node_count_after = self.node_count();
+        debug_assert!(node_count_before >= node_count_after);
+        let number_of_nodes_removed = node_count_before - node_count_after;
         debug_assert_eq!(number_of_nodes_removed, removed_child_node_ids.len());
         debug_assert!(number_of_nodes_removed > 0);
         Some(RemovedSubTree {
@@ -421,11 +421,11 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 
     #[must_use]
-    pub fn number_of_nodes(&self) -> usize {
-        let num_nodes = self.nodes.len();
+    pub fn node_count(&self) -> usize {
+        let node_count = self.nodes.len();
         // Verify invariant
-        debug_assert_eq!(num_nodes, self.count_nodes_recursively());
-        num_nodes
+        debug_assert_eq!(node_count, self.count_nodes_recursively());
+        node_count
     }
 
     #[must_use]
