@@ -124,7 +124,7 @@ pub trait SegmentedPath<S: PathSegment, R: PathSegmentRef<S> + ?Sized>:
     /// included by [`Self::segments()`].
     // TODO: How to avoid boxing the result?
     #[must_use]
-    fn split_parent_child_segments(&self) -> (Box<dyn Iterator<Item = &R> + '_>, Option<&R>);
+    fn parent_child_segments(&self) -> (Box<dyn Iterator<Item = &R> + '_>, Option<&R>);
 }
 
 /// Absolute path with a root.

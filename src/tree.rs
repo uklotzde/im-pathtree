@@ -184,7 +184,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         }
         let root_node = Arc::clone(self.root_node());
         let mut parent_node = root_node;
-        let (parent_path_segments, child_path_segment) = child_path.split_parent_child_segments();
+        let (parent_path_segments, child_path_segment) = child_path.parent_child_segments();
         for path_segment in parent_path_segments {
             // TODO: Avoid to use an optional here
             let mut new_parent_node = None;
