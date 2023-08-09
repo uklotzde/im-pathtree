@@ -129,10 +129,6 @@ pub trait SegmentedPath<S: PathSegment, R: PathSegmentRef<S> + ?Sized>:
 
 /// Absolute path with a root.
 pub trait RootPath<S: PathSegment, R: PathSegmentRef<S> + ?Sized>: SegmentedPath<S, R> {
-    /// The root path.
-    #[must_use]
-    fn root() -> Self;
-
     /// Check if the path equals the root path.
     #[must_use]
     fn is_root(&self) -> bool;

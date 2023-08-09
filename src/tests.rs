@@ -9,12 +9,12 @@ use crate::{RootPath, SegmentedPath};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct SlashPath<'a>(Cow<'a, str>);
 
-impl<'a> SlashPath<'a> {
+impl SlashPath<'_> {
+    const PATH_SEPARATOR: char = '/';
+
     const PATH_SEPARATOR_STR: &str = "/";
 
-    const fn new(inner: Cow<'a, str>) -> Self {
-        Self(inner)
-    }
+    const ROOT: Self = Self(Cow::Borrowed(Self::PATH_SEPARATOR_STR));
 
     fn as_str(&self) -> &str {
         self.0.as_ref()
@@ -22,7 +22,7 @@ impl<'a> SlashPath<'a> {
 
     fn segments(&self) -> impl Iterator<Item = &str> + '_ {
         self.as_str()
-            .split_terminator(Self::PATH_SEPARATOR_STR)
+            .split_terminator(Self::PATH_SEPARATOR)
             .filter(|segment| !segment.is_empty())
     }
 
@@ -37,13 +37,15 @@ impl<'a> SlashPath<'a> {
     }
 }
 
-impl RootPath<Cow<'static, str>, str> for SlashPath<'_> {
-    fn root() -> Self {
-        Self::new(Cow::Borrowed(Self::PATH_SEPARATOR_STR))
+impl<'a> SlashPath<'a> {
+    const fn new(inner: Cow<'a, str>) -> Self {
+        Self(inner)
     }
+}
 
+impl RootPath<Cow<'static, str>, str> for SlashPath<'_> {
     fn is_root(&self) -> bool {
-        *self == Self::root()
+        *self == Self::ROOT
     }
 }
 
@@ -60,7 +62,7 @@ impl SegmentedPath<Cow<'static, str>, str> for SlashPath<'_> {
 
 #[test]
 fn slash_path() {
-    assert_eq!(0, SlashPath::root().segments().count());
+    assert_eq!(0, SlashPath::ROOT.segments().count());
     assert_eq!(0, SlashPath::new(Cow::Borrowed("//")).segments().count());
     assert_eq!(
         vec![" ", "\t", "\n"],
@@ -134,10 +136,10 @@ fn single_leaf_node() {
 
     // Update the root node (leaf)
     assert!(path_tree
-        .insert_or_update_node_value(&SlashPath::root(), NodeValue::Leaf(42), Default::default)
+        .insert_or_update_node_value(&SlashPath::ROOT, NodeValue::Leaf(42), Default::default)
         .is_ok());
     assert!(path_tree
-        .insert_or_update_node_value(&SlashPath::root(), NodeValue::Inner(-1), Default::default)
+        .insert_or_update_node_value(&SlashPath::ROOT, NodeValue::Inner(-1), Default::default)
         .is_err());
 
     assert_eq!(1, path_tree.number_of_nodes());
@@ -209,10 +211,10 @@ fn multiple_nodes() {
 
     // Update the root node (inner)
     assert!(path_tree
-        .insert_or_update_node_value(&SlashPath::root(), NodeValue::Inner(-42), Default::default)
+        .insert_or_update_node_value(&SlashPath::ROOT, NodeValue::Inner(-42), Default::default)
         .is_ok());
     assert!(path_tree
-        .insert_or_update_node_value(&SlashPath::root(), NodeValue::Leaf(42), Default::default)
+        .insert_or_update_node_value(&SlashPath::ROOT, NodeValue::Leaf(42), Default::default)
         .is_err());
 
     assert_eq!(3, path_tree.number_of_nodes());
