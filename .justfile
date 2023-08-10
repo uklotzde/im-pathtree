@@ -10,12 +10,14 @@ _default:
 fmt:
     cargo fmt --all
 
-# Run clippy with all features enabled
+# Run clippy with selected feature selections
 clippy:
+    cargo clippy --locked --no-deps --all-targets --no-default-features -- -D warnings --cap-lints warn
     cargo clippy --locked --no-deps --all-targets --all-features -- -D warnings --cap-lints warn
 
-# Run tests with all features enabled
+# Run tests with selected feature selections
 test:
+    RUST_BACKTRACE=1 cargo test --locked --no-default-features -- --nocapture
     RUST_BACKTRACE=1 cargo test --locked --all-features -- --nocapture
 
 # Set up (and update) tooling

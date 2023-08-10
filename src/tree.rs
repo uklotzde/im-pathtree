@@ -3,11 +3,10 @@
 
 use std::{fmt, marker::PhantomData, sync::Arc};
 
-use im::HashMap;
 use thiserror::Error;
 
 use crate::{
-    InnerNode, LeafNode, Node, NodeId, NodeValue, PathSegment, PathSegmentRef, RootPath,
+    HashMap, InnerNode, LeafNode, Node, NodeId, NodeValue, PathSegment, PathSegmentRef, RootPath,
     SegmentedPath as _,
 };
 

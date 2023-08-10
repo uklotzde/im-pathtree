@@ -15,6 +15,11 @@ include = ["/src", "/README.md", "/LICENSES"]
 
 [dependencies]
 derive_more = "0.99.17"
-im = "15.1.0"
 log = "0.4.19"
 thiserror = "1.0.44"
+
+im = { version = "15.1.0", optional = true }
+
+[features]
+"default" = ["im"]
+"im" = ["dep:im"]

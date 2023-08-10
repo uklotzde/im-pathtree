@@ -38,5 +38,11 @@ pub use tree::{
     TreeNode,
 };
 
+#[cfg(feature = "im")]
+type HashMap<K, V> = im::HashMap<K, V>;
+
+#[cfg(not(feature = "im"))]
+type HashMap<K, V> = std::collections::HashMap<K, V>;
+
 #[cfg(test)]
 mod tests;
