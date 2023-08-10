@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: The im-pathtree authors
 // SPDX-License-Identifier: MPL-2.0
 
-use crate::{NodeId, PathTree, PathTreeTypes};
+use crate::{HashMap, NodeId, PathTree, PathTreeTypes};
 
 #[derive(Debug, Clone)]
 pub enum NodeValue<T: PathTreeTypes> {
@@ -103,7 +103,7 @@ pub struct InnerNode<T>
 where
     T: PathTreeTypes,
 {
-    pub(crate) children: Vec<NodeId>,
+    pub(crate) children: HashMap<T::PathSegment, NodeId>,
     pub value: <T as PathTreeTypes>::InnerValue,
 }
 
@@ -112,15 +112,15 @@ where
     T: PathTreeTypes,
 {
     /// Construct an empty inner node with no children
-    pub const fn new(value: <T as PathTreeTypes>::InnerValue) -> Self {
+    pub fn new(value: <T as PathTreeTypes>::InnerValue) -> Self {
         Self {
-            children: Vec::new(),
+            children: HashMap::new(),
             value,
         }
     }
 
     pub fn children(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.children.iter().copied()
+        self.children.values().copied()
     }
 
     fn children_recursively<'a>(

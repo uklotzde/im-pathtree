@@ -23,11 +23,6 @@ pub trait PathSegmentRef<T: PathSegment>: Eq + Hash + fmt::Debug {
     #[must_use]
     fn is_empty(&self) -> bool;
 
-    /// Check if the segment is equal to the given value.
-    // TODO: How to avoid this unhandy equality comparison method?
-    #[must_use]
-    fn equals(&self, other: &T) -> bool;
-
     /// Convert the borrowed segment reference to an owned value.
     // TODO: How to use ToOwned for this purpose? The conflicting implementation
     // for Cow<'a, str> currently prevents this.
@@ -50,10 +45,6 @@ impl PathSegmentRef<String> for str {
         self.is_empty()
     }
 
-    fn equals(&self, other: &String) -> bool {
-        self == other
-    }
-
     fn to_owned(&self) -> String {
         String::from(self)
     }
@@ -74,10 +65,6 @@ impl<'a> PathSegmentRef<Cow<'a, str>> for str {
         self.is_empty()
     }
 
-    fn equals(&self, other: &Cow<'a, str>) -> bool {
-        self == other
-    }
-
     fn to_owned(&self) -> Cow<'a, str> {
         Cow::Owned(String::from(self))
     }
@@ -96,10 +83,6 @@ impl PathSegment for OsString {
 impl PathSegmentRef<OsString> for OsStr {
     fn is_empty(&self) -> bool {
         self.is_empty()
-    }
-
-    fn equals(&self, other: &OsString) -> bool {
-        self == other
     }
 
     fn to_owned(&self) -> OsString {
