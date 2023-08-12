@@ -25,7 +25,7 @@ where
     pub(crate) fn from_value(value: NodeValue<T>) -> Self {
         match value {
             NodeValue::Inner(value) => Self::Inner(InnerNode::new(value)),
-            NodeValue::Leaf(value) => Self::Leaf(LeafNode { value }),
+            NodeValue::Leaf(value) => Self::Leaf(LeafNode::new(value)),
         }
     }
 
@@ -152,4 +152,11 @@ where
 #[derive(Debug, Clone)]
 pub struct LeafNode<V> {
     pub value: V,
+}
+
+impl<V> LeafNode<V> {
+    /// Construct a leaf node
+    pub const fn new(value: V) -> Self {
+        Self { value }
+    }
 }
