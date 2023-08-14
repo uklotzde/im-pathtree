@@ -48,6 +48,7 @@ pub struct RemovedSubTree<T>
 where
     T: PathTreeTypes,
 {
+    pub node: Arc<TreeNode<T>>,
     pub parent_node: Arc<TreeNode<T>>,
     pub removed_child_node_ids: Vec<NodeId>,
 }
@@ -434,6 +435,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         debug_assert_eq!(number_of_nodes_removed, removed_child_node_ids.len());
         debug_assert!(number_of_nodes_removed > 0);
         Some(RemovedSubTree {
+            node: child_node,
             parent_node: new_parent_node,
             removed_child_node_ids,
         })
