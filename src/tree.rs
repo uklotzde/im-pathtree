@@ -441,6 +441,30 @@ impl<T: PathTreeTypes> PathTree<T> {
         })
     }
 
+    /// Retain only the nodes that match the given predicate.
+    ///
+    /// Returns the number of nodes that have been removed.
+    pub fn retain_nodes(&mut self, mut predicate: impl FnMut(&TreeNode<T>) -> bool) {
+        // TODO: Optimize by traversing the tree structure instead of iterating over
+        // all nodes in no particular order. If a subtree is removed then all its
+        // children don't need to be visited.
+        let mut node_ids_to_remove = Vec::new();
+        for node in self.nodes() {
+            if !predicate(node) {
+                node_ids_to_remove.push(node.id);
+            }
+        }
+        // Remove the subtrees in reverse order of the depth of their root node.
+        node_ids_to_remove.sort_by(|lhs, rhs| {
+            let lhs_depth = self.count_parent_nodes(*lhs).expect("node exists");
+            let rhs_depth = self.count_parent_nodes(*rhs).expect("node exists");
+            lhs_depth.cmp(&rhs_depth)
+        });
+        for node_id in node_ids_to_remove {
+            self.remove_subtree(node_id);
+        }
+    }
+
     /// All nodes in no particular order.
     pub fn nodes(&self) -> impl Iterator<Item = &Arc<TreeNode<T>>> {
         self.nodes.values()
