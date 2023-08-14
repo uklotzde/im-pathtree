@@ -441,22 +441,58 @@ impl<T: PathTreeTypes> PathTree<T> {
         })
     }
 
+    /// All nodes in no particular order.
+    pub fn nodes(&self) -> impl Iterator<Item = &Arc<TreeNode<T>>> {
+        self.nodes.values()
+    }
+
+    /// Total number of nodes in the tree.
     #[must_use]
     pub fn node_count(&self) -> usize {
         let node_count = self.nodes.len();
-        // Verify invariant
-        debug_assert_eq!(node_count, self.count_nodes_recursively());
+        // Verify invariants
+        debug_assert_eq!(
+            node_count,
+            1 + self.root_node().node.count_children_recursively(self)
+        );
+        debug_assert_eq!(node_count, self.nodes().count());
         node_count
     }
 
+    /// All parent nodes of the given node up to the root node.
+    ///
+    /// Returns `None` if the given node is not found.
     #[must_use]
-    fn count_nodes_recursively(&self) -> usize {
-        1 + self.root_node().node.count_children_recursively(self)
+    pub fn parent_nodes(
+        &self,
+        node_id: NodeId,
+    ) -> Option<impl Iterator<Item = &Arc<TreeNode<T>>> + '_> {
+        let Some(mut next_node) = self.lookup_node(node_id) else {
+            return None;
+        };
+        Some(std::iter::from_fn(move || {
+            let Some(parent_node) = next_node.parent.as_ref().map(|parent| {
+                self.resolve_node(parent.id)
+            }) else {
+                return None;
+            };
+            next_node = parent_node;
+            Some(parent_node)
+        }))
     }
 
+    /// The number of parent nodes of the given node up to the root node.
+    ///
+    /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn count_child_nodes_recursively(&self, parent_node_id: NodeId) -> Option<usize> {
-        self.lookup_node(parent_node_id)
+    pub fn count_parent_nodes(&self, node_id: NodeId) -> Option<usize> {
+        self.parent_nodes(node_id).map(std::iter::Iterator::count)
+    }
+
+    /// Number of child nodes of the given node (recursively).
+    #[must_use]
+    pub fn count_child_nodes_recursively(&self, node_id: NodeId) -> Option<usize> {
+        self.lookup_node(node_id)
             .map(|tree_node| tree_node.node.count_children_recursively(self))
     }
 }
