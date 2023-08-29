@@ -288,14 +288,27 @@ impl<T: PathTreeTypes> PathTree<T> {
         new_inner_value: impl FnMut() -> T::InnerValue,
         try_clone_leaf_into_inner_value: impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,
     ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
-        let Ok(TreeNodeParentChildContext { parent_node, child_path_segment}) = self.create_missing_parent_nodes_recursively(path, new_inner_value, try_clone_leaf_into_inner_value) else {
+        let Ok(TreeNodeParentChildContext {
+            parent_node,
+            child_path_segment,
+        }) = self.create_missing_parent_nodes_recursively(
+            path,
+            new_inner_value,
+            try_clone_leaf_into_inner_value,
+        )
+        else {
             return Err(InsertOrUpdateNodeValueError::InvalidPath(new_value));
         };
         let Some(parent_node) = parent_node else {
             // Update the root node
-            let new_root_node = self.root_node().try_clone_update_value(new_value).map_err(InsertOrUpdateNodeValueError::ValueTypeMismatch)?;
+            let new_root_node = self
+                .root_node()
+                .try_clone_update_value(new_value)
+                .map_err(InsertOrUpdateNodeValueError::ValueTypeMismatch)?;
             let new_root_node = Arc::new(new_root_node);
-            let old_root_node = self.nodes.insert(new_root_node.id, Arc::clone(&new_root_node));
+            let old_root_node = self
+                .nodes
+                .insert(new_root_node.id, Arc::clone(&new_root_node));
             log::debug!(
                 "Updated root node {old_root_node:?} to {new_root_node:?}",
                 old_root_node = old_root_node.as_deref(),
@@ -495,9 +508,11 @@ impl<T: PathTreeTypes> PathTree<T> {
             return None;
         };
         Some(std::iter::from_fn(move || {
-            let Some(parent_node) = next_node.parent.as_ref().map(|parent| {
-                self.resolve_node(parent.id)
-            }) else {
+            let Some(parent_node) = next_node
+                .parent
+                .as_ref()
+                .map(|parent| self.resolve_node(parent.id))
+            else {
                 return None;
             };
             next_node = parent_node;
@@ -591,7 +606,12 @@ fn try_replace_leaf_with_inner_node<T: PathTreeTypes>(
         impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,
     >,
 ) -> Result<Arc<TreeNode<T>>, ()> {
-    let TreeNode { id, parent, node: Node::Leaf(LeafNode {value: leaf_value} ) } = &*node else {
+    let TreeNode {
+        id,
+        parent,
+        node: Node::Leaf(LeafNode { value: leaf_value }),
+    } = &*node
+    else {
         return Ok(node);
     };
     let try_clone_leaf_into_inner_value = try_clone_leaf_into_inner_value
