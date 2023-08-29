@@ -112,13 +112,13 @@ type NodeValue = crate::NodeValue<PathTreeTypes>;
 
 // <https://github.com/rust-lang/api-guidelines/issues/223#issuecomment-683346783>
 const _: () = {
-    fn assert_send<T: Send>() {}
+    const fn assert_send<T: Send>() {}
     let _ = assert_send::<PathTree>;
 };
 
 // <https://github.com/rust-lang/api-guidelines/issues/223#issuecomment-683346783>
 const _: () = {
-    fn assert_sync<T: Sync>() {}
+    const fn assert_sync<T: Sync>() {}
     let _ = assert_sync::<PathTree>;
 };
 

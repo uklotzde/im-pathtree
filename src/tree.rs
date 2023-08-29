@@ -107,7 +107,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 
     #[must_use]
-    pub fn root_node_id(&self) -> NodeId {
+    pub const fn root_node_id(&self) -> NodeId {
         self.root_node_id
     }
 

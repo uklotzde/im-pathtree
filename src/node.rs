@@ -29,14 +29,14 @@ where
         }
     }
 
-    pub fn inner_value(&self) -> Option<&T::InnerValue> {
+    pub const fn inner_value(&self) -> Option<&T::InnerValue> {
         match self {
             Self::Inner(InnerNode { value, .. }) => Some(value),
             Self::Leaf(LeafNode { .. }) => None,
         }
     }
 
-    pub fn leaf_value(&self) -> Option<&T::LeafValue> {
+    pub const fn leaf_value(&self) -> Option<&T::LeafValue> {
         match self {
             Self::Leaf(LeafNode { value, .. }) => Some(value),
             Self::Inner(InnerNode { .. }) => None,
