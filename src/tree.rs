@@ -140,6 +140,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 
     #[must_use]
+    #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
     pub fn find_node(&self, path: &T::RootPath) -> Option<&Arc<TreeNode<T>>> {
         // TODO: Use a trie data structure and Aho-Corasick algo for faster lookup?
         let root_node = self.resolve_node(self.root_node_id);
@@ -281,6 +282,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// the parent node as well.
     ///
     /// In case of an error, the new value is returned back to the caller.
+    #[allow(clippy::missing_panics_doc)] // Never panics
     pub fn insert_or_update_node_value(
         &mut self,
         path: &T::RootPath,
@@ -398,6 +400,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// The root node cannot be removed.
     ///
     /// Returns the ID of the parent node and the IDs of the removed nodes.
+    #[allow(clippy::missing_panics_doc)] // Never panics
     pub fn remove_subtree(&mut self, node_id: NodeId) -> Option<RemovedSubTree<T>> {
         let (parent_node, child_node) = {
             let child_node = self.lookup_node(node_id)?;
@@ -457,6 +460,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// Retain only the nodes that match the given predicate.
     ///
     /// Returns the number of nodes that have been removed.
+    #[allow(clippy::missing_panics_doc)] // Never panics
     pub fn retain_nodes(&mut self, mut predicate: impl FnMut(&TreeNode<T>) -> bool) {
         // TODO: Optimize by traversing the tree structure instead of iterating over
         // all nodes in no particular order. If a subtree is removed then all its
