@@ -24,6 +24,10 @@ impl NodeId {
     /// Only the first [`usize::MAX`] identifiers are guaranteed to be unique.
     /// All following identifiers will be duplicates of previous ones.
     ///
+    /// The node IDs are unique within a single process, even across multiple trees.
+    /// Different nodes always have different IDs, no matter if they are in the same
+    /// tree or not.
+    ///
     /// ```
     /// # use im_pathtree::NodeId;
     /// let foo_id = NodeId::new();
@@ -41,6 +45,9 @@ impl NodeId {
             if let Some(next_value) = NonZeroUsize::new(next_value) {
                 return Self(next_value);
             }
+            // Looping happens only on overflow and at most once during each call.
+            // It is almost impossible that multiple overflows occur in a row during
+            // a single call.
         }
     }
 }
