@@ -276,10 +276,13 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// Insert or update a node in the tree.
     ///
     /// All missing parent nodes are created recursively and initialized
-    /// with the inner default value.
+    /// with the value returned by `new_inner_value`.
     ///
-    /// Returns the parent node and the inserted/updated child node. Both require updating
-    /// the parent node as well.
+    /// If the parent node exists and is a leaf node then it is replaced
+    /// with an inner node by calling `try_clone_leaf_into_inner_value`.
+    ///
+    /// Returns the updated parent node and the inserted/updated child node.
+    /// The parent node is `None` if the root node has been updated.
     ///
     /// In case of an error, the new value is returned back to the caller.
     #[allow(clippy::missing_panics_doc)] // Never panics
@@ -322,27 +325,49 @@ impl<T: PathTreeTypes> PathTree<T> {
             });
         };
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
+        let child_path_segment = child_path_segment.expect("should never be empty");
+        self.insert_or_update_child_node_value(&parent_node, child_path_segment, new_value)
+    }
+
+    /// Insert or update a child node in the tree.
+    ///
+    /// The parent node must exist and it must be an inner node.
+    ///
+    /// Returns the updated parent node and the inserted/updated child node.
+    ///
+    /// In case of an error, the new value is returned back to the caller.
+    #[allow(clippy::missing_panics_doc)] // Never panics
+    pub fn insert_or_update_child_node_value(
+        &mut self,
+        parent_node: &TreeNode<T>,
+        child_path_segment: &<T as PathTreeTypes>::PathSegmentRef,
+        new_value: NodeValue<T>,
+    ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
+        debug_assert!(matches!(parent_node.node, Node::Inner(_)));
         let Node::Inner(inner_node) = &parent_node.node else {
-            unreachable!();
+            return Err(InsertOrUpdateNodeValueError::InvalidPath(new_value));
         };
         // Wrap into an option as a workaround for the limitations of the borrow checker.
         // The value is consumed at most once in every code path.
         let mut new_value = Some(new_value);
-        let path_segment = child_path_segment.expect("should never be empty");
+        let path_segment = child_path_segment;
         let new_child_node = if let Some(child_node) = inner_node
             .children
             .get(path_segment)
             .map(|node_id| self.resolve_node(*node_id))
         {
-            log::debug!("Updating value of existing node: {path:?}");
+            log::debug!(
+                "Updating value of existing child node {child_node_id}",
+                child_node_id = child_node.id
+            );
             let new_value = new_value.take().expect("not consumed yet");
             child_node
                 .try_clone_update_value(new_value)
                 .map_err(InsertOrUpdateNodeValueError::ValueTypeMismatch)?
         } else {
-            log::debug!("Adding new node: {path:?}");
             let value = new_value.take().expect("not consumed yet");
             let child_node_id = NodeId::new();
+            log::debug!("Adding new child node {child_node_id}");
             debug_assert!(!self.contains_node(child_node_id));
             TreeNode {
                 id: child_node_id,
