@@ -179,6 +179,11 @@ impl<T: PathTreeTypes> PathTree<T> {
         Some(last_visited_node)
     }
 
+    #[must_use]
+    pub fn find_node_id(&self, path: &T::RootPath) -> Option<NodeId> {
+        self.find_node(path).map(|node| node.id)
+    }
+
     fn create_missing_parent_nodes_recursively<'a>(
         &mut self,
         child_path: &'a T::RootPath,
