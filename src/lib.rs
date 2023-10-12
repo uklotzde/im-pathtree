@@ -35,8 +35,8 @@ pub use path::{PathSegment, PathSegmentRef, RootPath, SegmentedPath};
 
 mod tree;
 pub use tree::{
-    InsertOrUpdateNodeValueError, ParentChildTreeNode, PathTree, PathTreeTypes, RemovedSubTree,
-    TreeNode,
+    InsertOrUpdateNodeValueError, MatchNodePath, MatchedNodePath, ParentChildTreeNode, PathTree,
+    PathTreeTypes, RemovedSubTree, ResolvedNodePath, TreeNode, TreeNodeParent,
 };
 
 #[cfg(feature = "im")]
