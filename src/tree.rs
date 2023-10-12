@@ -530,27 +530,31 @@ impl<T: PathTreeTypes> PathTree<T> {
         node_count
     }
 
-    /// All parent nodes of the given node up to the root node.
+    /// Traverse all parent nodes up to the root node.
+    ///
+    /// Returns the parent nodes with the respective path segment from the
+    /// child node that has been traversed.
     ///
     /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn parent_nodes(
+    pub fn traverse_parent_nodes(
         &self,
         node_id: NodeId,
-    ) -> Option<impl Iterator<Item = &Arc<TreeNode<T>>> + '_> {
+    ) -> Option<impl Iterator<Item = (&Arc<TreeNode<T>>, &<T as PathTreeTypes>::PathSegment)> + '_>
+    {
         let Some(mut next_node) = self.lookup_node(node_id) else {
             return None;
         };
         Some(std::iter::from_fn(move || {
-            let Some(parent_node) = next_node
+            let Some((parent_node, path_segment)) = next_node
                 .parent
                 .as_ref()
-                .map(|parent| self.resolve_node(parent.id))
+                .map(|parent| (self.resolve_node(parent.id), &parent.path_segment))
             else {
                 return None;
             };
             next_node = parent_node;
-            Some(parent_node)
+            Some((parent_node, path_segment))
         }))
     }
 
@@ -559,7 +563,8 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// Returns `None` if the given node is not found.
     #[must_use]
     pub fn count_parent_nodes(&self, node_id: NodeId) -> Option<usize> {
-        self.parent_nodes(node_id).map(std::iter::Iterator::count)
+        self.traverse_parent_nodes(node_id)
+            .map(std::iter::Iterator::count)
     }
 
     /// Number of child nodes of the given node (recursively).
