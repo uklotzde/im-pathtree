@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: The im-pathtree authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::{borrow::Borrow, fmt, marker::PhantomData, sync::Arc};
+use std::{borrow::Borrow, fmt, marker::PhantomData, num::NonZeroUsize, sync::Arc};
 
 use thiserror::Error;
 
@@ -86,6 +86,37 @@ where
     child_path_segment: Option<&'a T::PathSegmentRef>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchNodePath {
+    Full,
+    PartialOrFull,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchedNodePath {
+    Full {
+        /// Number of path segments.
+        ///
+        /// Both the total and matched number of path segments are equals.
+        number_of_segments: usize,
+    },
+    Partial {
+        /// Number of matched path segments.
+        ///
+        /// Strictly less than the total number of path segments.
+        number_of_matched_segments: NonZeroUsize,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedNodePath<'a, T>
+where
+    T: PathTreeTypes,
+{
+    pub node: &'a Arc<TreeNode<T>>,
+    pub matched_path: MatchedNodePath,
+}
+
 impl<T: PathTreeTypes> PathTree<T> {
     /// Create a new path tree with the given root node.
     #[must_use]
@@ -113,7 +144,7 @@ impl<T: PathTreeTypes> PathTree<T> {
 
     #[must_use]
     pub fn root_node(&self) -> &Arc<TreeNode<T>> {
-        self.resolve_node(self.root_node_id)
+        self.get_node(self.root_node_id)
     }
 
     #[must_use]
@@ -126,7 +157,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         self.nodes.get(&id)
     }
 
-    /// Resolve an existing node by its id.
+    /// Get an existing node by its id.
     ///
     /// Only used internally for node ids that must exist. If the node does not exist
     /// the tree is probably in an inconsistent state!
@@ -135,34 +166,77 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Panics if the node does not exist.
     #[must_use]
-    fn resolve_node(&self, id: NodeId) -> &Arc<TreeNode<T>> {
+    fn get_node(&self, id: NodeId) -> &Arc<TreeNode<T>> {
         self.nodes.get(&id).expect("node exists")
     }
 
+    /// Find a node by its path.
     #[must_use]
     #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
     pub fn find_node(&self, path: &T::RootPath) -> Option<&Arc<TreeNode<T>>> {
+        self.resolve_node_path(path, MatchNodePath::Full).map(
+            |ResolvedNodePath { node, matched_path }| {
+                debug_assert_eq!(
+                    matched_path,
+                    MatchedNodePath::Full {
+                        number_of_segments: path.segments().count()
+                    }
+                );
+                node
+            },
+        )
+    }
+
+    /// Find a node by its path.
+    ///
+    /// Returns the found node and the number of resolved path segments.
+    #[must_use]
+    #[allow(clippy::type_complexity)]
+    #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
+    pub fn resolve_node_path(
+        &self,
+        path: &T::RootPath,
+        match_path: MatchNodePath,
+    ) -> Option<ResolvedNodePath<'_, T>> {
         // TODO: Use a trie data structure and Aho-Corasick algo for faster lookup?
-        let root_node = self.resolve_node(self.root_node_id);
-        if path.is_root() {
-            return Some(root_node);
-        }
+        let root_node = self.get_node(self.root_node_id);
         let mut last_visited_node = root_node;
+        let mut number_of_matched_path_segments = 0;
+        let mut partial_path_match = false;
         for path_segment in path.segments() {
+            debug_assert!(!path_segment.is_empty());
             match &last_visited_node.node {
                 Node::Leaf(_) => {
-                    // path is too long
-                    return None;
+                    // Path is too long, i.e. the remaining path segments could not be resolved.
+                    match match_path {
+                        MatchNodePath::Full => {
+                            return None;
+                        }
+                        MatchNodePath::PartialOrFull => {
+                            partial_path_match = true;
+                            break;
+                        }
+                    }
                 }
                 Node::Inner(inner_node) => {
                     let child_node = inner_node
                         .children
                         .get(path_segment)
-                        .map(|node_id| self.resolve_node(*node_id));
+                        .map(|node_id| self.get_node(*node_id));
                     if let Some(child_node) = child_node {
                         last_visited_node = child_node;
+                        number_of_matched_path_segments += 1;
                     } else {
-                        return None;
+                        // Path segment mismatch.
+                        match match_path {
+                            MatchNodePath::Full => {
+                                return None;
+                            }
+                            MatchNodePath::PartialOrFull => {
+                                partial_path_match = true;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -176,12 +250,23 @@ impl<T: PathTreeTypes> PathTree<T> {
                     .borrow()
             );
         }
-        Some(last_visited_node)
-    }
-
-    #[must_use]
-    pub fn find_node_id(&self, path: &T::RootPath) -> Option<NodeId> {
-        self.find_node(path).map(|node| node.id)
+        let matched_path = if partial_path_match {
+            // At least 1 segment must match for a partial match.
+            let number_of_matched_segments = NonZeroUsize::new(number_of_matched_path_segments)?;
+            debug_assert!(number_of_matched_segments.get() < path.segments().count());
+            MatchedNodePath::Partial {
+                number_of_matched_segments,
+            }
+        } else {
+            debug_assert_eq!(number_of_matched_path_segments, path.segments().count());
+            MatchedNodePath::Full {
+                number_of_segments: number_of_matched_path_segments,
+            }
+        };
+        Some(ResolvedNodePath {
+            node: last_visited_node,
+            matched_path,
+        })
     }
 
     fn create_missing_parent_nodes_recursively<'a>(
@@ -211,7 +296,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             let child_node = inner_node
                 .children
                 .get(path_segment)
-                .map(|node_id| self.resolve_node(*node_id));
+                .map(|node_id| self.get_node(*node_id));
             if let Some(child_node) = child_node {
                 log::debug!("Found child node {child_node:?} for path segment {path_segment:?}");
                 next_parent_node = Arc::clone(child_node);
@@ -359,7 +444,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         let new_child_node = if let Some(child_node) = inner_node
             .children
             .get(path_segment)
-            .map(|node_id| self.resolve_node(*node_id))
+            .map(|node_id| self.get_node(*node_id))
         {
             log::debug!(
                 "Updating value of existing child node {child_node_id}",
@@ -437,7 +522,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             let parent_node = child_node
                 .parent
                 .as_ref()
-                .map(|parent| self.resolve_node(parent.id))?;
+                .map(|parent| self.get_node(parent.id))?;
             debug_assert!(matches!(parent_node.node, Node::Inner(_)));
             let Node::Inner(inner_node) = &parent_node.node else {
                 unreachable!();
@@ -466,7 +551,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         debug_assert!(old_parent_node.is_some());
         log::debug!(
             "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
-            new_parent_node = self.resolve_node(parent_node_id)
+            new_parent_node = self.get_node(parent_node_id)
         );
         let removed_child_node_ids = std::iter::once(child_node.id)
             .chain(child_node.node.children_recursively(self))
@@ -549,7 +634,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             let Some((parent_node, path_segment)) = next_node
                 .parent
                 .as_ref()
-                .map(|parent| (self.resolve_node(parent.id), &parent.path_segment))
+                .map(|parent| (self.get_node(parent.id), &parent.path_segment))
             else {
                 return None;
             };
