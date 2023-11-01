@@ -557,7 +557,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             .chain(
                 child_node
                     .node
-                    .children_recursively(self)
+                    .descendants(self)
                     .map(|(_, node_id)| node_id),
             )
             .collect::<Vec<_>>();
@@ -614,7 +614,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         // Verify invariants
         debug_assert_eq!(
             node_count,
-            1 + self.root_node().node.count_children_recursively(self)
+            1 + self.root_node().node.count_descendants(self)
         );
         debug_assert_eq!(node_count, self.nodes().count());
         node_count
@@ -661,7 +661,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     #[must_use]
     pub fn count_child_nodes_recursively(&self, node_id: NodeId) -> Option<usize> {
         self.lookup_node(node_id)
-            .map(|tree_node| tree_node.node.count_children_recursively(self))
+            .map(|tree_node| tree_node.node.count_descendants(self))
     }
 }
 

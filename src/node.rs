@@ -68,6 +68,9 @@ impl<T> Node<T>
 where
     T: PathTreeTypes,
 {
+    /// Returns an iterator over all children of this node
+    ///
+    /// Only includes direct children, not grandchildren or other descendants.
     pub fn children(&self) -> impl Iterator<Item = (&T::PathSegmentRef, NodeId)> + '_ {
         match self {
             Self::Inner(inner) => Some(inner.children()),
@@ -77,13 +80,19 @@ where
         .flatten()
     }
 
-    pub fn children_recursively<'a>(
+    /// Returns an iterator over all descendants of this node
+    ///
+    /// Recursively traverse the subtree.
+    ///
+    /// The ordering of nodes is undefined and an implementation detail. Only parent
+    /// nodes are guaranteed to be visited before their children.
+    pub fn descendants<'a>(
         &'a self,
         tree: &'a PathTree<T>,
     ) -> Box<dyn Iterator<Item = (&T::PathSegmentRef, NodeId)> + 'a> {
         Box::new(
             match self {
-                Self::Inner(inner) => Some(inner.children_recursively(tree)),
+                Self::Inner(inner) => Some(inner.descendants(tree)),
                 Self::Leaf(_) => None,
             }
             .into_iter()
@@ -91,9 +100,9 @@ where
         )
     }
 
-    pub fn count_children_recursively<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
+    pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
         match self {
-            Self::Inner(inner) => inner.count_children_recursively(tree),
+            Self::Inner(inner) => inner.count_descendants(tree),
             Self::Leaf(_) => 0,
         }
     }
@@ -127,7 +136,7 @@ where
             .map(|(path_segment, node_id)| (path_segment.borrow(), *node_id))
     }
 
-    fn children_recursively<'a>(
+    fn descendants<'a>(
         &'a self,
         tree: &'a PathTree<T>,
     ) -> Box<dyn Iterator<Item = (&T::PathSegmentRef, NodeId)> + 'a> {
@@ -136,18 +145,18 @@ where
             let grandchildren = tree
                 .lookup_node(node_id)
                 .into_iter()
-                .flat_map(|node| node.node.children_recursively(tree));
+                .flat_map(|node| node.node.descendants(tree));
             std::iter::once((path_segment, node_id)).chain(grandchildren)
         }))
     }
 
-    pub fn count_children_recursively<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
+    pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
         self.children().fold(0, |count, (_, node_id)| {
             count
                 + 1
                 + tree
                     .lookup_node(node_id)
-                    .map_or(0, |node| node.node.count_children_recursively(tree))
+                    .map_or(0, |node| node.node.count_descendants(tree))
         })
     }
 }
