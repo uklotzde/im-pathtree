@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: The im-pathtree authors
 // SPDX-License-Identifier: MPL-2.0
 
+use std::borrow::Borrow as _;
+
 use crate::{HashMap, NodeId, PathTree, PathTreeTypes};
 
 #[derive(Debug, Clone)]
@@ -66,7 +68,7 @@ impl<T> Node<T>
 where
     T: PathTreeTypes,
 {
-    pub fn children(&self) -> impl Iterator<Item = NodeId> + '_ {
+    pub fn children(&self) -> impl Iterator<Item = (&T::PathSegmentRef, NodeId)> + '_ {
         match self {
             Self::Inner(inner) => Some(inner.children()),
             Self::Leaf(_) => None,
@@ -78,7 +80,7 @@ where
     pub fn children_recursively<'a>(
         &'a self,
         tree: &'a PathTree<T>,
-    ) -> Box<dyn Iterator<Item = NodeId> + 'a> {
+    ) -> Box<dyn Iterator<Item = (&T::PathSegmentRef, NodeId)> + 'a> {
         Box::new(
             match self {
                 Self::Inner(inner) => Some(inner.children_recursively(tree)),
@@ -119,26 +121,28 @@ where
         }
     }
 
-    pub fn children(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.children.values().copied()
+    pub fn children(&self) -> impl Iterator<Item = (&T::PathSegmentRef, NodeId)> + '_ {
+        self.children
+            .iter()
+            .map(|(path_segment, node_id)| (path_segment.borrow(), *node_id))
     }
 
     fn children_recursively<'a>(
         &'a self,
         tree: &'a PathTree<T>,
-    ) -> Box<dyn Iterator<Item = NodeId> + 'a> {
-        Box::new(self.children().flat_map(|node_id| {
+    ) -> Box<dyn Iterator<Item = (&T::PathSegmentRef, NodeId)> + 'a> {
+        Box::new(self.children().flat_map(|(path_segment, node_id)| {
             // Traversal in depth-first order
             let grandchildren = tree
                 .lookup_node(node_id)
                 .into_iter()
                 .flat_map(|node| node.node.children_recursively(tree));
-            std::iter::once(node_id).chain(grandchildren)
+            std::iter::once((path_segment, node_id)).chain(grandchildren)
         }))
     }
 
     pub fn count_children_recursively<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
-        self.children().fold(0, |count, node_id| {
+        self.children().fold(0, |count, (_, node_id)| {
             count
                 + 1
                 + tree

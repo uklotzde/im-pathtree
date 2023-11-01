@@ -554,7 +554,12 @@ impl<T: PathTreeTypes> PathTree<T> {
             new_parent_node = self.get_node(parent_node_id)
         );
         let removed_child_node_ids = std::iter::once(child_node.id)
-            .chain(child_node.node.children_recursively(self))
+            .chain(
+                child_node
+                    .node
+                    .children_recursively(self)
+                    .map(|(_, node_id)| node_id),
+            )
             .collect::<Vec<_>>();
         let node_count_before = self.node_count();
         for node_id in &removed_child_node_ids {
