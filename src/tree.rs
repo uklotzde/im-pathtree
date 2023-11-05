@@ -170,6 +170,19 @@ impl<T: PathTreeTypes> PathTree<T> {
         self.nodes.get(&id).expect("node exists")
     }
 
+    /// Iterator over all ancestor nodes of the given node.
+    ///
+    /// Returns the node and the respective path segment from the child node.
+    pub fn ancestor_nodes(
+        &self,
+        id: NodeId,
+    ) -> impl Iterator<Item = (&Arc<TreeNode<T>>, &T::PathSegmentRef)> + Clone {
+        AncestorTreeNodeIter {
+            tree: self,
+            next_node: self.lookup_node(id),
+        }
+    }
+
     /// Find a node by its path.
     #[must_use]
     #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
@@ -757,4 +770,39 @@ fn try_replace_leaf_with_inner_node<T: PathTreeTypes>(
     let replaced_leaf_node = nodes.insert(inner_node.id, Arc::clone(&inner_node));
     debug_assert!(replaced_leaf_node.is_some());
     Ok(inner_node)
+}
+
+/// Iterator over all ancestor nodes of the given node.
+///
+/// Returns the node and the respective path segment from the child node.
+#[derive(Debug, Clone)]
+pub struct AncestorTreeNodeIter<'a, T: PathTreeTypes> {
+    tree: &'a PathTree<T>,
+    next_node: Option<&'a Arc<TreeNode<T>>>,
+}
+
+impl<'a, T: PathTreeTypes> AncestorTreeNodeIter<'a, T> {
+    /// Create a new iterator over all ancestor nodes of the given node.
+    ///
+    /// The given node must exist in the tree. This is only checked in
+    /// debug builds. Otherwise the iterator will be empty.
+    #[must_use]
+    pub fn new(tree: &'a PathTree<T>, node: &'a Arc<TreeNode<T>>) -> Self {
+        debug_assert!(tree.contains_node(node.id));
+        Self {
+            tree,
+            next_node: Some(node),
+        }
+    }
+}
+
+impl<'a, T: PathTreeTypes> Iterator for AncestorTreeNodeIter<'a, T> {
+    type Item = (&'a Arc<TreeNode<T>>, &'a T::PathSegmentRef);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let parent = self.next_node.as_ref()?.parent.as_ref()?;
+        self.next_node = self.tree.lookup_node(parent.node_id);
+        self.next_node
+            .map(|node| (node, parent.path_segment.borrow()))
+    }
 }

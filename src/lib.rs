@@ -38,8 +38,8 @@ pub use self::path::{PathSegment, PathSegmentRef, RootPath, SegmentedPath};
 
 mod tree;
 pub use self::tree::{
-    InsertOrUpdateNodeValueError, MatchNodePath, MatchedNodePath, ParentChildTreeNode, PathTree,
-    PathTreeTypes, RemovedSubTree, ResolvedNodePath, TreeNode,
+    AncestorTreeNodeIter, InsertOrUpdateNodeValueError, MatchNodePath, MatchedNodePath,
+    ParentChildTreeNode, PathTree, PathTreeTypes, RemovedSubTree, ResolvedNodePath, TreeNode,
 };
 
 #[cfg(feature = "im")]
