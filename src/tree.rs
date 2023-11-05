@@ -170,19 +170,6 @@ impl<T: PathTreeTypes> PathTree<T> {
         self.nodes.get(&id).expect("node exists")
     }
 
-    /// Iterator over all ancestor nodes of the given node.
-    ///
-    /// Returns the node and the respective path segment from the child node.
-    pub fn ancestor_nodes(
-        &self,
-        id: NodeId,
-    ) -> impl Iterator<Item = (&Arc<TreeNode<T>>, &T::PathSegmentRef)> + Clone {
-        AncestorTreeNodeIter {
-            tree: self,
-            next_node: self.lookup_node(id),
-        }
-    }
-
     /// Find a node by its path.
     #[must_use]
     #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
@@ -282,7 +269,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         })
     }
 
-    fn create_missing_parent_nodes_recursively<'a>(
+    fn create_missing_ancestor_nodes<'a>(
         &mut self,
         child_path: &'a T::RootPath,
         mut new_inner_value: impl FnMut() -> T::InnerValue,
@@ -399,7 +386,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         let Ok(TreeNodeParentChildContext {
             parent_node,
             child_path_segment,
-        }) = self.create_missing_parent_nodes_recursively(
+        }) = self.create_missing_ancestor_nodes(
             path,
             new_inner_value,
             try_clone_leaf_into_inner_value,
@@ -608,8 +595,8 @@ impl<T: PathTreeTypes> PathTree<T> {
         }
         // Remove the subtrees in reverse order of the depth of their root node.
         node_ids_to_remove.sort_by(|lhs, rhs| {
-            let lhs_depth = self.count_parent_nodes(*lhs).expect("node exists");
-            let rhs_depth = self.count_parent_nodes(*rhs).expect("node exists");
+            let lhs_depth = self.count_ancestor_nodes(*lhs).expect("node exists");
+            let rhs_depth = self.count_ancestor_nodes(*rhs).expect("node exists");
             lhs_depth.cmp(&rhs_depth)
         });
         for node_id in node_ids_to_remove {
@@ -635,48 +622,34 @@ impl<T: PathTreeTypes> PathTree<T> {
         node_count
     }
 
-    /// Traverse all parent nodes up to the root node.
+    /// Iterator over all ancestor nodes of the given node.
     ///
-    /// Returns the parent nodes with the respective path segment from the
-    /// child node that has been traversed.
-    ///
-    /// Returns `None` if the given node is not found.
-    #[must_use]
-    pub fn traverse_parent_nodes(
+    /// Returns the node and the respective path segment from the child node.
+    pub fn ancestor_nodes(
         &self,
-        node_id: NodeId,
-    ) -> Option<impl Iterator<Item = (&Arc<TreeNode<T>>, &<T as PathTreeTypes>::PathSegment)> + '_>
-    {
-        let Some(mut next_node) = self.lookup_node(node_id) else {
-            return None;
-        };
-        Some(std::iter::from_fn(move || {
-            let Some((parent_node, path_segment)) = next_node.parent.as_ref().map(
-                |HalfEdge {
-                     node_id,
-                     path_segment,
-                 }| (self.get_node(*node_id), path_segment),
-            ) else {
-                return None;
-            };
-            next_node = parent_node;
-            Some((parent_node, path_segment))
-        }))
+        id: NodeId,
+    ) -> impl Iterator<Item = (&Arc<TreeNode<T>>, &T::PathSegmentRef)> + Clone {
+        AncestorTreeNodeIter {
+            tree: self,
+            next_node: self.lookup_node(id),
+        }
     }
 
     /// The number of parent nodes of the given node up to the root node.
     ///
     /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn count_parent_nodes(&self, node_id: NodeId) -> Option<usize> {
-        self.traverse_parent_nodes(node_id)
-            .map(std::iter::Iterator::count)
+    pub fn count_ancestor_nodes(&self, id: NodeId) -> Option<usize> {
+        let node = self.lookup_node(id)?;
+        Some(AncestorTreeNodeIter::new(self, node).count())
     }
 
     /// Number of child nodes of the given node (recursively).
+    ///
+    /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn count_child_nodes_recursively(&self, node_id: NodeId) -> Option<usize> {
-        self.lookup_node(node_id)
+    pub fn count_descendant_nodes(&self, id: NodeId) -> Option<usize> {
+        self.lookup_node(id)
             .map(|tree_node| tree_node.node.count_descendants(self))
     }
 }

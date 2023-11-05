@@ -128,10 +128,7 @@ fn single_leaf_node() {
     let root_node_id = path_tree.root_node_id();
 
     assert_eq!(1, path_tree.node_count());
-    assert_eq!(
-        Some(0),
-        path_tree.count_child_nodes_recursively(root_node_id)
-    );
+    assert_eq!(Some(0), path_tree.count_descendant_nodes(root_node_id));
     assert_eq!(Some(&23), path_tree.root_node().node.leaf_value());
 
     // Update the root node (leaf)
@@ -153,10 +150,7 @@ fn single_leaf_node() {
         .is_err());
 
     assert_eq!(1, path_tree.node_count());
-    assert_eq!(
-        Some(0),
-        path_tree.count_child_nodes_recursively(root_node_id)
-    );
+    assert_eq!(Some(0), path_tree.count_descendant_nodes(root_node_id));
     assert_eq!(Some(&42), path_tree.root_node().node.leaf_value());
 
     // Inserting a new leaf node with its parent should fail
@@ -179,10 +173,7 @@ fn single_leaf_node() {
         .is_ok());
 
     assert_eq!(3, path_tree.node_count());
-    assert_eq!(
-        Some(2),
-        path_tree.count_child_nodes_recursively(root_node_id)
-    );
+    assert_eq!(Some(2), path_tree.count_descendant_nodes(root_node_id));
     assert_eq!(Some(&42), path_tree.root_node().node.inner_value());
     assert_eq!(
         Some(&-2),
@@ -209,10 +200,7 @@ fn multiple_nodes() {
     let root_node_id = path_tree.root_node_id();
 
     assert_eq!(1, path_tree.node_count());
-    assert_eq!(
-        Some(0),
-        path_tree.count_child_nodes_recursively(root_node_id)
-    );
+    assert_eq!(Some(0), path_tree.count_descendant_nodes(root_node_id));
     assert_eq!(Some(&-23), path_tree.root_node().node.inner_value());
 
     // Insert a new leaf node with its parent
@@ -226,10 +214,7 @@ fn multiple_nodes() {
         .is_ok());
 
     assert_eq!(3, path_tree.node_count());
-    assert_eq!(
-        Some(2),
-        path_tree.count_child_nodes_recursively(root_node_id)
-    );
+    assert_eq!(Some(2), path_tree.count_descendant_nodes(root_node_id));
     assert_eq!(Some(&-23), path_tree.root_node().node.inner_value());
     assert_eq!(
         Some(&-2),
@@ -273,10 +258,7 @@ fn multiple_nodes() {
         .is_err());
 
     assert_eq!(3, path_tree.node_count());
-    assert_eq!(
-        Some(2),
-        path_tree.count_child_nodes_recursively(root_node_id)
-    );
+    assert_eq!(Some(2), path_tree.count_descendant_nodes(root_node_id));
     assert_eq!(Some(&-42), path_tree.root_node().node.inner_value());
     assert_eq!(
         Some(&-2),
@@ -315,10 +297,7 @@ fn multiple_nodes() {
         .is_ok());
 
     assert_eq!(4, path_tree.node_count());
-    assert_eq!(
-        Some(3),
-        path_tree.count_child_nodes_recursively(root_node_id)
-    );
+    assert_eq!(Some(3), path_tree.count_descendant_nodes(root_node_id));
     assert_eq!(Some(&-42), path_tree.root_node().node.inner_value());
     assert_eq!(
         Some(&-2),
