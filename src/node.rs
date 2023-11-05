@@ -90,14 +90,10 @@ where
         &'a self,
         tree: &'a PathTree<T>,
     ) -> Box<dyn Iterator<Item = HalfEdgeRef<'a, T>> + 'a> {
-        Box::new(
-            match self {
-                Self::Inner(inner) => Some(inner.descendants(tree)),
-                Self::Leaf(_) => None,
-            }
-            .into_iter()
-            .flatten(),
-        )
+        match self {
+            Self::Inner(inner) => Box::new(inner.descendants(tree)),
+            Self::Leaf(_) => Box::new(std::iter::empty()),
+        }
     }
 
     pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
@@ -142,15 +138,15 @@ where
     fn descendants<'a>(
         &'a self,
         tree: &'a PathTree<T>,
-    ) -> Box<dyn Iterator<Item = HalfEdgeRef<'a, T>> + 'a> {
-        Box::new(self.children().flat_map(|half_edge_to_child| {
+    ) -> impl Iterator<Item = HalfEdgeRef<'a, T>> + 'a {
+        self.children().flat_map(|half_edge_to_child| {
             // Traversal in depth-first order
             let grandchildren = tree
                 .lookup_node(half_edge_to_child.node_id)
                 .into_iter()
                 .flat_map(|node| node.node.descendants(tree));
             std::iter::once(half_edge_to_child).chain(grandchildren)
-        }))
+        })
     }
 
     pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
