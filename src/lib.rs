@@ -24,19 +24,22 @@
 // TODO: Add missing docs
 #![allow(clippy::missing_errors_doc)]
 
+mod edge;
+pub use self::edge::{HalfEdge, HalfEdgeRef};
+
 mod node;
-pub use node::{InnerNode, LeafNode, Node, NodeValue};
+pub use self::node::{InnerNode, LeafNode, Node, NodeValue};
 
 mod node_id;
-pub use node_id::NodeId;
+pub use self::node_id::NodeId;
 
 mod path;
-pub use path::{PathSegment, PathSegmentRef, RootPath, SegmentedPath};
+pub use self::path::{PathSegment, PathSegmentRef, RootPath, SegmentedPath};
 
 mod tree;
-pub use tree::{
+pub use self::tree::{
     InsertOrUpdateNodeValueError, MatchNodePath, MatchedNodePath, ParentChildTreeNode, PathTree,
-    PathTreeTypes, RemovedSubTree, ResolvedNodePath, TreeNode, TreeNodeParent,
+    PathTreeTypes, RemovedSubTree, ResolvedNodePath, TreeNode,
 };
 
 #[cfg(feature = "im")]

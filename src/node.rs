@@ -3,7 +3,7 @@
 
 use std::borrow::Borrow as _;
 
-use crate::{HashMap, NodeId, PathTree, PathTreeTypes};
+use crate::{HalfEdgeRef, HashMap, NodeId, PathTree, PathTreeTypes};
 
 #[derive(Debug, Clone)]
 pub enum NodeValue<T: PathTreeTypes> {
@@ -71,7 +71,7 @@ where
     /// Returns an iterator over all children of this node
     ///
     /// Only includes direct children, not grandchildren or other descendants.
-    pub fn children(&self) -> impl Iterator<Item = (&T::PathSegmentRef, NodeId)> + '_ {
+    pub fn children(&self) -> impl Iterator<Item = HalfEdgeRef<'_, T>> + '_ {
         match self {
             Self::Inner(inner) => Some(inner.children()),
             Self::Leaf(_) => None,
@@ -89,7 +89,7 @@ where
     pub fn descendants<'a>(
         &'a self,
         tree: &'a PathTree<T>,
-    ) -> Box<dyn Iterator<Item = (&T::PathSegmentRef, NodeId)> + 'a> {
+    ) -> Box<dyn Iterator<Item = HalfEdgeRef<'a, T>> + 'a> {
         Box::new(
             match self {
                 Self::Inner(inner) => Some(inner.descendants(tree)),
@@ -130,34 +130,44 @@ where
         }
     }
 
-    pub fn children(&self) -> impl Iterator<Item = (&T::PathSegmentRef, NodeId)> + '_ {
+    pub fn children(&self) -> impl Iterator<Item = HalfEdgeRef<'_, T>> + '_ {
         self.children
             .iter()
-            .map(|(path_segment, node_id)| (path_segment.borrow(), *node_id))
+            .map(|(path_segment, node_id)| HalfEdgeRef {
+                path_segment: path_segment.borrow(),
+                node_id: *node_id,
+            })
     }
 
     fn descendants<'a>(
         &'a self,
         tree: &'a PathTree<T>,
-    ) -> Box<dyn Iterator<Item = (&T::PathSegmentRef, NodeId)> + 'a> {
-        Box::new(self.children().flat_map(|(path_segment, node_id)| {
+    ) -> Box<dyn Iterator<Item = HalfEdgeRef<'a, T>> + 'a> {
+        Box::new(self.children().flat_map(|half_edge_to_child| {
             // Traversal in depth-first order
             let grandchildren = tree
-                .lookup_node(node_id)
+                .lookup_node(half_edge_to_child.node_id)
                 .into_iter()
                 .flat_map(|node| node.node.descendants(tree));
-            std::iter::once((path_segment, node_id)).chain(grandchildren)
+            std::iter::once(half_edge_to_child).chain(grandchildren)
         }))
     }
 
     pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
-        self.children().fold(0, |count, (_, node_id)| {
-            count
-                + 1
-                + tree
-                    .lookup_node(node_id)
-                    .map_or(0, |node| node.node.count_descendants(tree))
-        })
+        self.children().fold(
+            0,
+            |count,
+             HalfEdgeRef {
+                 node_id,
+                 path_segment: _,
+             }| {
+                count
+                    + 1
+                    + tree
+                        .lookup_node(node_id)
+                        .map_or(0, |node| node.node.count_descendants(tree))
+            },
+        )
     }
 }
 

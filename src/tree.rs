@@ -6,8 +6,8 @@ use std::{borrow::Borrow, fmt, marker::PhantomData, num::NonZeroUsize, sync::Arc
 use thiserror::Error;
 
 use crate::{
-    HashMap, InnerNode, LeafNode, Node, NodeId, NodeValue, PathSegment, PathSegmentRef, RootPath,
-    SegmentedPath as _,
+    HalfEdge, HalfEdgeRef, HashMap, InnerNode, LeafNode, Node, NodeId, NodeValue, PathSegment,
+    PathSegmentRef, RootPath, SegmentedPath as _,
 };
 
 /// Type system for [`PathTree`].
@@ -307,8 +307,8 @@ impl<T: PathTreeTypes> PathTree<T> {
                 debug_assert_ne!(parent_node_id, child_node_id);
                 let child_node = TreeNode {
                     id: child_node_id,
-                    parent: Some(TreeNodeParent {
-                        id: parent_node_id,
+                    parent: Some(HalfEdge {
+                        node_id: parent_node_id,
                         path_segment: path_segment.to_owned(),
                     }),
                     node: Node::Inner(InnerNode::new(new_inner_value())),
@@ -461,8 +461,8 @@ impl<T: PathTreeTypes> PathTree<T> {
             debug_assert!(!self.contains_node(child_node_id));
             TreeNode {
                 id: child_node_id,
-                parent: Some(TreeNodeParent {
-                    id: parent_node.id,
+                parent: Some(HalfEdge {
+                    node_id: parent_node.id,
                     path_segment: path_segment.to_owned(),
                 }),
                 node: Node::from_value(value),
@@ -519,10 +519,12 @@ impl<T: PathTreeTypes> PathTree<T> {
     pub fn remove_subtree(&mut self, node_id: NodeId) -> Option<RemovedSubTree<T>> {
         let (parent_node, child_node) = {
             let child_node = self.lookup_node(node_id)?;
-            let parent_node = child_node
-                .parent
-                .as_ref()
-                .map(|parent| self.get_node(parent.id))?;
+            let parent_node = child_node.parent.as_ref().map(
+                |HalfEdge {
+                     node_id,
+                     path_segment: _,
+                 }| self.get_node(*node_id),
+            )?;
             debug_assert!(matches!(parent_node.node, Node::Inner(_)));
             let Node::Inner(inner_node) = &parent_node.node else {
                 unreachable!();
@@ -554,12 +556,12 @@ impl<T: PathTreeTypes> PathTree<T> {
             new_parent_node = self.get_node(parent_node_id)
         );
         let removed_child_node_ids = std::iter::once(child_node.id)
-            .chain(
-                child_node
-                    .node
-                    .descendants(self)
-                    .map(|(_, node_id)| node_id),
-            )
+            .chain(child_node.node.descendants(self).map(
+                |HalfEdgeRef {
+                     node_id,
+                     path_segment: _,
+                 }| node_id,
+            ))
             .collect::<Vec<_>>();
         let node_count_before = self.node_count();
         for node_id in &removed_child_node_ids {
@@ -636,11 +638,12 @@ impl<T: PathTreeTypes> PathTree<T> {
             return None;
         };
         Some(std::iter::from_fn(move || {
-            let Some((parent_node, path_segment)) = next_node
-                .parent
-                .as_ref()
-                .map(|parent| (self.get_node(parent.id), &parent.path_segment))
-            else {
+            let Some((parent_node, path_segment)) = next_node.parent.as_ref().map(
+                |HalfEdge {
+                     node_id,
+                     path_segment,
+                 }| (self.get_node(*node_id), path_segment),
+            ) else {
                 return None;
             };
             next_node = parent_node;
@@ -665,16 +668,6 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 }
 
-/// Link of non-root node in the tree.
-#[derive(Debug, Clone)]
-pub struct TreeNodeParent<T: PathTreeTypes> {
-    /// The id of the parent node.
-    pub id: NodeId,
-
-    /// Path segment for addressing the child from the parent.
-    pub path_segment: <T as PathTreeTypes>::PathSegment,
-}
-
 /// Immutable node in the tree.
 #[derive(Debug, Clone)]
 pub struct TreeNode<T: PathTreeTypes> {
@@ -684,7 +677,7 @@ pub struct TreeNode<T: PathTreeTypes> {
     /// Link to the parent node.
     ///
     /// Must be `None` for the root node and `Some` for all other nodes.
-    pub parent: Option<TreeNodeParent<T>>,
+    pub parent: Option<HalfEdge<T>>,
 
     /// The actual content of this node.
     pub node: Node<T>,
