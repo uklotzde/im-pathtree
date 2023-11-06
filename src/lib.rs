@@ -25,7 +25,7 @@
 #![allow(clippy::missing_errors_doc)]
 
 mod edge;
-pub use self::edge::{HalfEdge, HalfEdgeRef};
+pub use self::edge::{HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef};
 
 mod node;
 pub use self::node::{InnerNode, LeafNode, Node, NodeValue};

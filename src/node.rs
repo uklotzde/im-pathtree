@@ -154,8 +154,8 @@ where
             0,
             |count,
              HalfEdgeRef {
-                 node_id,
                  path_segment: _,
+                 node_id,
              }| {
                 count
                     + 1

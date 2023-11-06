@@ -6,8 +6,8 @@ use std::{borrow::Borrow, fmt, marker::PhantomData, num::NonZeroUsize, sync::Arc
 use thiserror::Error;
 
 use crate::{
-    HalfEdge, HalfEdgeRef, HashMap, InnerNode, LeafNode, Node, NodeId, NodeValue, PathSegment,
-    PathSegmentRef, RootPath, SegmentedPath as _,
+    HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef, HashMap, InnerNode, LeafNode, Node, NodeId,
+    NodeValue, PathSegment, PathSegmentRef, RootPath, SegmentedPath as _,
 };
 
 /// Type system for [`PathTree`].
@@ -308,8 +308,8 @@ impl<T: PathTreeTypes> PathTree<T> {
                 let child_node = TreeNode {
                     id: child_node_id,
                     parent: Some(HalfEdge {
-                        node_id: parent_node_id,
                         path_segment: path_segment.to_owned(),
+                        node_id: parent_node_id,
                     }),
                     node: Node::Inner(InnerNode::new(new_inner_value())),
                 };
@@ -462,8 +462,8 @@ impl<T: PathTreeTypes> PathTree<T> {
             TreeNode {
                 id: child_node_id,
                 parent: Some(HalfEdge {
-                    node_id: parent_node.id,
                     path_segment: path_segment.to_owned(),
+                    node_id: parent_node.id,
                 }),
                 node: Node::from_value(value),
             }
@@ -521,8 +521,8 @@ impl<T: PathTreeTypes> PathTree<T> {
             let child_node = self.lookup_node(node_id)?;
             let parent_node = child_node.parent.as_ref().map(
                 |HalfEdge {
-                     node_id,
                      path_segment: _,
+                     node_id,
                  }| self.get_node(*node_id),
             )?;
             debug_assert!(matches!(parent_node.node, Node::Inner(_)));
@@ -558,8 +558,8 @@ impl<T: PathTreeTypes> PathTree<T> {
         let removed_child_node_ids = std::iter::once(child_node.id)
             .chain(child_node.node.descendants(self).map(
                 |HalfEdgeRef {
-                     node_id,
                      path_segment: _,
+                     node_id,
                  }| node_id,
             ))
             .collect::<Vec<_>>();
@@ -628,7 +628,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     pub fn ancestor_nodes(
         &self,
         id: NodeId,
-    ) -> impl Iterator<Item = (&Arc<TreeNode<T>>, &T::PathSegmentRef)> + Clone {
+    ) -> impl Iterator<Item = HalfEdgeTreeNodeRef<'_, T>> + Clone {
         AncestorTreeNodeIter {
             tree: self,
             next_node: self.lookup_node(id),
@@ -770,12 +770,14 @@ impl<'a, T: PathTreeTypes> AncestorTreeNodeIter<'a, T> {
 }
 
 impl<'a, T: PathTreeTypes> Iterator for AncestorTreeNodeIter<'a, T> {
-    type Item = (&'a Arc<TreeNode<T>>, &'a T::PathSegmentRef);
+    type Item = HalfEdgeTreeNodeRef<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let parent = self.next_node.as_ref()?.parent.as_ref()?;
         self.next_node = self.tree.lookup_node(parent.node_id);
-        self.next_node
-            .map(|node| (node, parent.path_segment.borrow()))
+        self.next_node.map(|node| HalfEdgeTreeNodeRef {
+            path_segment: parent.path_segment.borrow(),
+            node,
+        })
     }
 }
