@@ -44,7 +44,7 @@ where
 
 /// Return type when removing a node from the tree.
 #[derive(Debug, Clone)]
-pub struct RemovedSubTree<T>
+pub struct RemovedSubtree<T>
 where
     T: PathTreeTypes,
 {
@@ -516,37 +516,44 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Returns the ID of the parent node and the IDs of the removed nodes.
     #[allow(clippy::missing_panics_doc)] // Never panics
-    pub fn remove_subtree(&mut self, node_id: NodeId) -> Option<RemovedSubTree<T>> {
-        let (parent_node, child_node) = {
-            let child_node = self.lookup_node(node_id)?;
-            let parent_node = child_node.parent.as_ref().map(
-                |HalfEdge {
+    pub fn remove_subtree(&mut self, node_id: NodeId) -> Option<RemovedSubtree<T>> {
+        let node = Arc::clone(self.lookup_node(node_id)?);
+        // Collect the IDs of all nodes that will be removed before starting to mutate the tree!
+        // Otherwise invariants might be violated.
+        let removed_node_ids = std::iter::once(node_id)
+            .chain(node.node.descendants(self).map(
+                |HalfEdgeRef {
                      path_segment: _,
                      node_id,
-                 }| self.get_node(*node_id),
+                 }| node_id,
+            ))
+            .collect::<Vec<_>>();
+        let node_count_before = self.node_count();
+        // Disconnect the subtree from the parent node.
+        let new_parent_node = {
+            let child_node = self.lookup_node(node_id)?;
+            debug_assert_eq!(child_node.id, node_id);
+            let (path_segment_to_parent, parent_node) = child_node.parent.as_ref().map(
+                |HalfEdge {
+                     path_segment: path_segment_to_parent,
+                     node_id,
+                 }| (path_segment_to_parent.borrow(), self.get_node(*node_id)),
             )?;
             debug_assert!(matches!(parent_node.node, Node::Inner(_)));
             let Node::Inner(inner_node) = &parent_node.node else {
                 unreachable!();
             };
             let mut inner_node = inner_node.clone();
-            inner_node.children.remove(
-                child_node
-                    .parent
-                    .as_ref()
-                    .expect("has parent")
-                    .path_segment
-                    .borrow(),
-            );
-            let parent_node = TreeNode {
+            let removed_id = inner_node.children.remove(path_segment_to_parent);
+            debug_assert_eq!(removed_id, Some(node_id));
+            TreeNode {
                 id: parent_node.id,
                 parent: parent_node.parent.clone(),
                 node: Node::Inner(inner_node),
-            };
-            (parent_node, Arc::clone(child_node))
+            }
         };
-        let parent_node_id = parent_node.id;
-        let new_parent_node = Arc::new(parent_node);
+        let parent_node_id = new_parent_node.id;
+        let new_parent_node = Arc::new(new_parent_node);
         let old_parent_node = self
             .nodes
             .insert(parent_node_id, Arc::clone(&new_parent_node));
@@ -555,25 +562,17 @@ impl<T: PathTreeTypes> PathTree<T> {
             "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
             new_parent_node = self.get_node(parent_node_id)
         );
-        let removed_node_ids = std::iter::once(child_node.id)
-            .chain(child_node.node.descendants(self).map(
-                |HalfEdgeRef {
-                     path_segment: _,
-                     node_id,
-                 }| node_id,
-            ))
-            .collect::<Vec<_>>();
-        let node_count_before = self.node_count();
         for node_id in &removed_node_ids {
             self.nodes.remove(node_id);
         }
+        // The tree is now in a consistent state again.
         let node_count_after = self.node_count();
         debug_assert!(node_count_before >= node_count_after);
         let number_of_nodes_removed = node_count_before - node_count_after;
         debug_assert_eq!(number_of_nodes_removed, removed_node_ids.len());
         debug_assert!(number_of_nodes_removed > 0);
-        Some(RemovedSubTree {
-            node: child_node,
+        Some(RemovedSubtree {
+            node,
             parent_node: new_parent_node,
             removed_node_ids,
         })
