@@ -50,7 +50,7 @@ where
 {
     pub node: Arc<TreeNode<T>>,
     pub parent_node: Arc<TreeNode<T>>,
-    pub removed_child_node_ids: Vec<NodeId>,
+    pub removed_node_ids: Vec<NodeId>,
 }
 
 impl<T> InsertOrUpdateNodeValueError<T>
@@ -555,7 +555,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
             new_parent_node = self.get_node(parent_node_id)
         );
-        let removed_child_node_ids = std::iter::once(child_node.id)
+        let removed_node_ids = std::iter::once(child_node.id)
             .chain(child_node.node.descendants(self).map(
                 |HalfEdgeRef {
                      path_segment: _,
@@ -564,18 +564,18 @@ impl<T: PathTreeTypes> PathTree<T> {
             ))
             .collect::<Vec<_>>();
         let node_count_before = self.node_count();
-        for node_id in &removed_child_node_ids {
+        for node_id in &removed_node_ids {
             self.nodes.remove(node_id);
         }
         let node_count_after = self.node_count();
         debug_assert!(node_count_before >= node_count_after);
         let number_of_nodes_removed = node_count_before - node_count_after;
-        debug_assert_eq!(number_of_nodes_removed, removed_child_node_ids.len());
+        debug_assert_eq!(number_of_nodes_removed, removed_node_ids.len());
         debug_assert!(number_of_nodes_removed > 0);
         Some(RemovedSubTree {
             node: child_node,
             parent_node: new_parent_node,
-            removed_child_node_ids,
+            removed_node_ids,
         })
     }
 
