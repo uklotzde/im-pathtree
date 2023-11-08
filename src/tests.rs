@@ -325,19 +325,37 @@ fn multiple_nodes() {
     );
 
     {
+        // Remove subtree "/foo/bar/baz".
+        let mut path_tree = path_tree.clone();
+        assert_eq!(4, path_tree.node_count());
+        let node = path_tree
+            .find_node(&SlashPath::new(Cow::Borrowed("/foo/bar/baz")))
+            .unwrap();
+        let node_id = node.id;
+        let node_descendant_count = path_tree.count_descendant_nodes(node_id).unwrap();
+        assert_eq!(0, node_descendant_count);
+        let removed_subtree = path_tree.remove_subtree(node_id).unwrap();
+        debug_assert_eq!(
+            node_descendant_count,
+            removed_subtree.descendant_node_ids.len()
+        );
+        assert_eq!(3, path_tree.node_count());
+    }
+
+    {
         // Remove subtree "/foo/bar".
         let mut path_tree = path_tree.clone();
         assert_eq!(4, path_tree.node_count());
-        let bar_node = path_tree
+        let node = path_tree
             .find_node(&SlashPath::new(Cow::Borrowed("/foo/bar")))
             .unwrap();
-        let bar_id = bar_node.id;
-        let bar_descendant_count = path_tree.count_descendant_nodes(bar_id).unwrap();
-        assert_eq!(1, bar_descendant_count);
-        let removed_subtree = path_tree.remove_subtree(bar_id).unwrap();
+        let node_id = node.id;
+        let node_descendant_count = path_tree.count_descendant_nodes(node_id).unwrap();
+        assert_eq!(1, node_descendant_count);
+        let removed_subtree = path_tree.remove_subtree(node_id).unwrap();
         debug_assert_eq!(
-            1 + bar_descendant_count,
-            removed_subtree.removed_node_ids.len()
+            node_descendant_count,
+            removed_subtree.descendant_node_ids.len()
         );
         assert_eq!(2, path_tree.node_count());
     }
@@ -346,16 +364,16 @@ fn multiple_nodes() {
         // Remove subtree "/foo".
         let mut path_tree = path_tree.clone();
         assert_eq!(4, path_tree.node_count());
-        let foo_node = path_tree
+        let node = path_tree
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap();
-        let foo_id = foo_node.id;
-        let foo_descendant_count = path_tree.count_descendant_nodes(foo_id).unwrap();
-        assert_eq!(2, foo_descendant_count);
-        let removed_subtree = path_tree.remove_subtree(foo_id).unwrap();
+        let node_id = node.id;
+        let node_descendant_count = path_tree.count_descendant_nodes(node_id).unwrap();
+        assert_eq!(2, node_descendant_count);
+        let removed_subtree = path_tree.remove_subtree(node_id).unwrap();
         debug_assert_eq!(
-            1 + foo_descendant_count,
-            removed_subtree.removed_node_ids.len()
+            node_descendant_count,
+            removed_subtree.descendant_node_ids.len()
         );
         // Only the root node remains.
         assert_eq!(1, path_tree.node_count());

@@ -48,9 +48,16 @@ pub struct RemovedSubtree<T>
 where
     T: PathTreeTypes,
 {
+    /// Root node of the removed subtree.
     pub node: Arc<TreeNode<T>>,
+
+    /// Updated parent node of the removed node.
     pub parent_node: Arc<TreeNode<T>>,
-    pub removed_node_ids: Vec<NodeId>,
+
+    /// Descendant node IDs that have been removed recursively from the tree.
+    ///
+    /// The total number of removed nodes is `1 + descendant_node_ids.len()`.
+    pub descendant_node_ids: Vec<NodeId>,
 }
 
 impl<T> InsertOrUpdateNodeValueError<T>
@@ -517,16 +524,18 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// Returns the ID of the parent node and the IDs of the removed nodes.
     #[allow(clippy::missing_panics_doc)] // Never panics
     pub fn remove_subtree(&mut self, node_id: NodeId) -> Option<RemovedSubtree<T>> {
-        let node = Arc::clone(self.lookup_node(node_id)?);
+        let node = self.lookup_node(node_id)?;
         // Collect the IDs of all nodes that will be removed before starting to mutate the tree!
         // Otherwise invariants might be violated.
-        let removed_node_ids = std::iter::once(node_id)
-            .chain(node.node.descendants(self).map(
+        let descendant_node_ids = node
+            .node
+            .descendants(self)
+            .map(
                 |HalfEdgeRef {
                      path_segment: _,
                      node_id,
                  }| node_id,
-            ))
+            )
             .collect::<Vec<_>>();
         let node_count_before = self.node_count();
         // Disconnect the subtree from the parent node.
@@ -562,19 +571,20 @@ impl<T: PathTreeTypes> PathTree<T> {
             "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
             new_parent_node = self.get_node(parent_node_id)
         );
-        for node_id in &removed_node_ids {
+        let node = self.nodes.remove(&node_id).expect("node exists");
+        for node_id in &descendant_node_ids {
             self.nodes.remove(node_id);
         }
         // The tree is now in a consistent state again.
         let node_count_after = self.node_count();
         debug_assert!(node_count_before >= node_count_after);
         let number_of_nodes_removed = node_count_before - node_count_after;
-        debug_assert_eq!(number_of_nodes_removed, removed_node_ids.len());
+        debug_assert_eq!(number_of_nodes_removed, 1 + descendant_node_ids.len());
         debug_assert!(number_of_nodes_removed > 0);
         Some(RemovedSubtree {
             node,
             parent_node: new_parent_node,
-            removed_node_ids,
+            descendant_node_ids,
         })
     }
 
