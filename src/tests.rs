@@ -12,7 +12,7 @@ struct SlashPath<'a>(Cow<'a, str>);
 impl SlashPath<'_> {
     const PATH_SEPARATOR: char = '/';
 
-    const PATH_SEPARATOR_STR: &str = "/";
+    const PATH_SEPARATOR_STR: &'static str = "/";
 
     const ROOT: Self = Self(Cow::Borrowed(Self::PATH_SEPARATOR_STR));
 
