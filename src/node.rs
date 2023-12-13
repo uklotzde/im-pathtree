@@ -88,13 +88,10 @@ where
     ///
     /// The ordering of nodes is undefined and an implementation detail. Only parent
     /// nodes are guaranteed to be visited before their children.
-    pub fn descendants<'a>(
-        &'a self,
-        tree: &'a PathTree<T>,
-    ) -> Box<dyn Iterator<Item = HalfEdgeRef<'a, T>> + 'a> {
+    pub fn descendants<'a>(&'a self, tree: &'a PathTree<T>) -> DepthFirstDescendantsIter<'a, T> {
         match self {
-            Self::Inner(inner) => Box::new(inner.descendants(tree)),
-            Self::Leaf(_) => Box::new(std::iter::empty()),
+            Self::Inner(inner) => inner.descendants(tree),
+            Self::Leaf(_) => DepthFirstDescendantsIter::empty(tree),
         }
     }
 
@@ -141,7 +138,9 @@ where
     }
 
     fn descendants<'a>(&'a self, tree: &'a PathTree<T>) -> DepthFirstDescendantsIter<'a, T> {
-        DepthFirstDescendantsIter::new(tree, self, DESCENDANTS_ITER_STACK_CAPACITY)
+        let mut iter = DepthFirstDescendantsIter::new(tree, DESCENDANTS_ITER_STACK_CAPACITY);
+        iter.push_parent(self);
+        iter
     }
 
     /// Number of descendants of this node
@@ -167,6 +166,9 @@ where
     }
 }
 
+/// Iterator over descendants of a node
+///
+/// Returned by [`Node::descendants()`].
 #[derive(Debug)]
 pub struct DepthFirstDescendantsIter<'a, T>
 where
@@ -180,14 +182,16 @@ impl<'a, T> DepthFirstDescendantsIter<'a, T>
 where
     T: PathTreeTypes,
 {
-    fn new(tree: &'a PathTree<T>, root_node: &'a InnerNode<T>, stack_capacity: usize) -> Self {
+    fn new(tree: &'a PathTree<T>, stack_capacity: usize) -> Self {
         let children_stack = Vec::with_capacity(stack_capacity);
-        let mut this = Self {
+        Self {
             tree,
             children_stack,
-        };
-        this.push_parent(root_node);
-        this
+        }
+    }
+
+    fn empty(tree: &'a PathTree<T>) -> Self {
+        Self::new(tree, 0)
     }
 
     fn push_parent(&mut self, parent: &'a InnerNode<T>) {
