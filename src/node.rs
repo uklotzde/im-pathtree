@@ -5,6 +5,8 @@ use std::borrow::Borrow as _;
 
 use crate::{HalfEdgeRef, HashMap, NodeId, PathTree, PathTreeTypes};
 
+const DESCENDANTS_ITER_STACK_CAPACITY: usize = 1024;
+
 #[derive(Debug, Clone)]
 pub enum NodeValue<T: PathTreeTypes> {
     Inner(T::InnerValue),
@@ -126,6 +128,9 @@ where
         }
     }
 
+    /// Edges to children of this node
+    ///
+    /// In arbitrary but stable ordering.
     pub fn children(&self) -> impl Iterator<Item = HalfEdgeRef<'_, T>> + '_ {
         self.children
             .iter()
@@ -135,21 +140,16 @@ where
             })
     }
 
-    fn descendants<'a>(
-        &'a self,
-        tree: &'a PathTree<T>,
-    ) -> impl Iterator<Item = HalfEdgeRef<'a, T>> + 'a {
-        self.children().flat_map(|half_edge_to_child| {
-            // Traversal in depth-first order
-            let grandchildren = tree
-                .lookup_node(half_edge_to_child.node_id)
-                .into_iter()
-                .flat_map(|node| node.node.descendants(tree));
-            std::iter::once(half_edge_to_child).chain(grandchildren)
-        })
+    fn descendants<'a>(&'a self, tree: &'a PathTree<T>) -> DepthFirstDescendantsIter<'a, T> {
+        DepthFirstDescendantsIter::new(tree, self, DESCENDANTS_ITER_STACK_CAPACITY)
     }
 
+    /// Number of descendants of this node
+    ///
+    /// Recursively counts all descendants of this node.
     pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
+        // This recursive implementation is probably faster than `descendants().count()`.
+        // TODO: Replace by a non-recursive version.
         self.children().fold(
             0,
             |count,
@@ -164,6 +164,59 @@ where
                         .map_or(0, |node| node.node.count_descendants(tree))
             },
         )
+    }
+}
+
+#[derive(Debug)]
+pub struct DepthFirstDescendantsIter<'a, T>
+where
+    T: PathTreeTypes,
+{
+    tree: &'a PathTree<T>,
+    children_stack: Vec<HalfEdgeRef<'a, T>>,
+}
+
+impl<'a, T> DepthFirstDescendantsIter<'a, T>
+where
+    T: PathTreeTypes,
+{
+    fn new(tree: &'a PathTree<T>, root_node: &'a InnerNode<T>, stack_capacity: usize) -> Self {
+        let children_stack = Vec::with_capacity(stack_capacity);
+        let mut this = Self {
+            tree,
+            children_stack,
+        };
+        this.push_parent(root_node);
+        this
+    }
+
+    fn push_parent(&mut self, parent: &'a InnerNode<T>) {
+        let len_before = self.children_stack.len();
+        self.children_stack.extend(parent.children());
+        debug_assert!(self.children_stack.len() >= len_before);
+        // Reverse the order of children so that the first child ends up at the top of the stack.
+        self.children_stack[len_before..].reverse();
+    }
+}
+
+impl<'a, T> Iterator for DepthFirstDescendantsIter<'a, T>
+where
+    T: PathTreeTypes,
+{
+    type Item = HalfEdgeRef<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let child = self.children_stack.pop()?;
+        let Some(node) = self.tree.lookup_node(child.node_id) else {
+            unreachable!("child node not found: {node_id}", node_id = child.node_id);
+        };
+        match &node.node {
+            Node::Inner(inner) => {
+                self.push_parent(inner);
+            }
+            Node::Leaf(_) => (),
+        }
+        Some(child)
     }
 }
 

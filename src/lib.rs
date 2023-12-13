@@ -17,7 +17,7 @@ mod edge;
 pub use self::edge::{HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef};
 
 mod node;
-pub use self::node::{InnerNode, LeafNode, Node, NodeValue};
+pub use self::node::{DepthFirstDescendantsIter, InnerNode, LeafNode, Node, NodeValue};
 
 mod node_id;
 pub use self::node_id::NodeId;
