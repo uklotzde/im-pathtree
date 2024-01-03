@@ -7,7 +7,7 @@
 [![Docs.rs](https://docs.rs/im-pathtree/badge.svg)](https://docs.rs/im-pathtree)
 [![Deps.rs](https://deps.rs/repo/github/uklotzde/im-pathtree/status.svg)](https://deps.rs/repo/github/uklotzde/im-pathtree)
 [![Security audit](https://github.com/uklotzde/im-pathtree/actions/workflows/security-audit.yaml/badge.svg)](https://github.com/uklotzde/im-pathtree/actions/workflows/security-audit.yaml)
-[![Continuous integration](https://github.com/uklotzde/im-pathtree/actions/workflows/continuous-integration.yaml/badge.svg)](https://github.com/uklotzde/im-pathtree/actions/workflows/continuous-integration.yaml)
+[![Continuous integration](https://github.com/uklotzde/im-pathtree/actions/workflows/test.yaml/badge.svg)](https://github.com/uklotzde/im-pathtree/actions/workflows/test.yaml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 
 Immutable, path-addressable tree data structure.
