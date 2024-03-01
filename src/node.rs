@@ -70,9 +70,21 @@ impl<T> Node<T>
 where
     T: PathTreeTypes,
 {
+    /// Returns the number of children
+    ///
+    /// Only includes direct children, not grandchildren or other descendants.
+    pub fn number_of_children(&self) -> usize {
+        match self {
+            Self::Inner(inner) => inner.number_of_children(),
+            Self::Leaf(_) => 0,
+        }
+    }
+
     /// Returns an iterator over all children of this node
     ///
     /// Only includes direct children, not grandchildren or other descendants.
+    // TODO: Since we know the exact number of children in advance we could
+    // return an `ExactSizeIterator`.
     pub fn children(&self) -> impl Iterator<Item = HalfEdgeRef<'_, T>> + '_ {
         match self {
             Self::Inner(inner) => Some(inner.children()),
@@ -123,6 +135,13 @@ where
             children: HashMap::new(),
             value,
         }
+    }
+
+    /// Returns the number of children
+    ///
+    /// Only includes direct children, not grandchildren or other descendants.
+    pub fn number_of_children(&self) -> usize {
+        self.children.len()
     }
 
     /// Edges to children of this node
