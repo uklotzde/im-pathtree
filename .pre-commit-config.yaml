@@ -25,7 +25,7 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.11.0
+    rev: v0.12.1
     hooks:
       - id: markdownlint-cli2
         exclude: ^LICENSE\.md$
@@ -35,7 +35,7 @@ repos:
       - id: codespell
         args: [--ignore-words=.codespellignore]
   - repo: https://github.com/sirosen/check-jsonschema
-    rev: 0.27.3
+    rev: 0.28.0
     hooks:
       - id: check-github-actions
       - id: check-github-workflows
@@ -64,7 +64,7 @@ repos:
           - yaml
   # https://reuse.software
   - repo: https://github.com/fsfe/reuse-tool
-    rev: v2.1.0
+    rev: v3.0.1
     hooks:
       - id: reuse
   - repo: local
