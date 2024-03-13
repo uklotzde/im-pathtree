@@ -19,15 +19,28 @@ pub trait PathTreeTypes: Clone + Default + fmt::Debug {
     type RootPath: RootPath<Self::PathSegment, Self::PathSegmentRef>;
 }
 
+/// A conflicting path from a parent to a child node.
+#[derive(Debug)]
+pub struct TreeNodeParentChildPathConflict<T>
+where
+    T: PathTreeTypes,
+{
+    pub parent_node: Arc<TreeNode<T>>,
+    pub child_path_segment: <T as PathTreeTypes>::PathSegment,
+}
+
 #[derive(Debug, Error)]
 pub enum InsertOrUpdateNodeValueError<T>
 where
     T: PathTreeTypes,
 {
-    #[error("invalid path")]
-    InvalidPath(NodeValue<T>),
+    #[error("path conflict")]
+    PathConflict {
+        conflict: TreeNodeParentChildPathConflict<T>,
+        value: NodeValue<T>,
+    },
     #[error("value type mismatch")]
-    ValueTypeMismatch(NodeValue<T>),
+    ValueTypeMismatch { value: NodeValue<T> },
 }
 
 /// Return type of mutating tree operations.
@@ -66,7 +79,7 @@ where
 {
     pub fn into_value(self) -> NodeValue<T> {
         match self {
-            Self::InvalidPath(value) | Self::ValueTypeMismatch(value) => value,
+            Self::PathConflict { value, .. } | Self::ValueTypeMismatch { value } => value,
         }
     }
 }
@@ -276,12 +289,13 @@ impl<T: PathTreeTypes> PathTree<T> {
         })
     }
 
+    #[allow(clippy::too_many_lines)] // TODO
     fn create_missing_ancestor_nodes<'a>(
         &mut self,
         child_path: &'a T::RootPath,
         mut new_inner_value: impl FnMut() -> T::InnerValue,
         try_clone_leaf_into_inner_value: impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,
-    ) -> Result<TreeNodeParentChildContext<'a, T>, ()> {
+    ) -> Result<TreeNodeParentChildContext<'a, T>, TreeNodeParentChildPathConflict<T>> {
         if child_path.is_root() {
             return Ok(TreeNodeParentChildContext {
                 parent_node: None,
@@ -291,12 +305,21 @@ impl<T: PathTreeTypes> PathTree<T> {
         let mut try_clone_leaf_into_inner_value = Some(try_clone_leaf_into_inner_value);
         let mut next_parent_node = Arc::clone(self.root_node());
         let (parent_path_segments, child_path_segment) = child_path.parent_child_segments();
+        debug_assert!(child_path_segment.is_some());
         for path_segment in parent_path_segments {
-            next_parent_node = try_replace_leaf_with_inner_node(
+            next_parent_node = match try_replace_leaf_with_inner_node(
                 &mut self.nodes,
                 next_parent_node,
                 &mut try_clone_leaf_into_inner_value,
-            )?;
+            ) {
+                Ok(next_parent_node) => next_parent_node,
+                Err(parent_node) => {
+                    return Err(TreeNodeParentChildPathConflict {
+                        parent_node,
+                        child_path_segment: path_segment.to_owned(),
+                    });
+                }
+            };
             let Node::Inner(inner_node) = &next_parent_node.node else {
                 break;
             };
@@ -355,11 +378,21 @@ impl<T: PathTreeTypes> PathTree<T> {
                     .borrow()
             );
         }
-        let next_parent_node = try_replace_leaf_with_inner_node(
+        let next_parent_node = match try_replace_leaf_with_inner_node(
             &mut self.nodes,
             next_parent_node,
             &mut try_clone_leaf_into_inner_value,
-        )?;
+        ) {
+            Ok(next_parent_node) => next_parent_node,
+            Err(parent_node) => {
+                return Err(TreeNodeParentChildPathConflict {
+                    parent_node,
+                    child_path_segment: child_path_segment
+                        .expect("child path segment should exist")
+                        .to_owned(),
+                });
+            }
+        };
         let parent_node = match next_parent_node.node {
             Node::Inner(_) => Some(next_parent_node),
             Node::Leaf(_) => None,
@@ -390,23 +423,32 @@ impl<T: PathTreeTypes> PathTree<T> {
         new_inner_value: impl FnMut() -> T::InnerValue,
         try_clone_leaf_into_inner_value: impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,
     ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
-        let Ok(TreeNodeParentChildContext {
+        let TreeNodeParentChildContext {
             parent_node,
             child_path_segment,
-        }) = self.create_missing_ancestor_nodes(
+        } = match self.create_missing_ancestor_nodes(
             path,
             new_inner_value,
             try_clone_leaf_into_inner_value,
-        )
-        else {
-            return Err(InsertOrUpdateNodeValueError::InvalidPath(new_value));
+        ) {
+            Ok(context) => context,
+            Err(conflict) => {
+                return Err(InsertOrUpdateNodeValueError::PathConflict {
+                    conflict,
+                    value: new_value,
+                });
+            }
         };
         let Some(parent_node) = parent_node else {
             // Update the root node
-            let new_root_node = self
-                .root_node()
-                .try_clone_update_value(new_value)
-                .map_err(InsertOrUpdateNodeValueError::ValueTypeMismatch)?;
+            let new_root_node =
+                self.root_node()
+                    .try_clone_update_value(new_value)
+                    .map_err(
+                        |new_value| InsertOrUpdateNodeValueError::ValueTypeMismatch {
+                            value: new_value,
+                        },
+                    )?;
             let new_root_node = Arc::new(new_root_node);
             let old_root_node = self
                 .nodes
@@ -436,13 +478,19 @@ impl<T: PathTreeTypes> PathTree<T> {
     #[allow(clippy::missing_panics_doc)] // Never panics
     pub fn insert_or_update_child_node_value(
         &mut self,
-        parent_node: &TreeNode<T>,
+        parent_node: &Arc<TreeNode<T>>,
         child_path_segment: &<T as PathTreeTypes>::PathSegmentRef,
         new_value: NodeValue<T>,
     ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
         let Node::Inner(inner_node) = &parent_node.node else {
-            return Err(InsertOrUpdateNodeValueError::InvalidPath(new_value));
+            return Err(InsertOrUpdateNodeValueError::PathConflict {
+                conflict: TreeNodeParentChildPathConflict {
+                    parent_node: Arc::clone(parent_node),
+                    child_path_segment: child_path_segment.to_owned(),
+                },
+                value: new_value,
+            });
         };
         // Wrap into an option as a workaround for the limitations of the borrow checker.
         // The value is consumed at most once in every code path.
@@ -460,7 +508,11 @@ impl<T: PathTreeTypes> PathTree<T> {
             let new_value = new_value.take().expect("not consumed yet");
             child_node
                 .try_clone_update_value(new_value)
-                .map_err(InsertOrUpdateNodeValueError::ValueTypeMismatch)?
+                .map_err(
+                    |new_value| InsertOrUpdateNodeValueError::ValueTypeMismatch {
+                        value: new_value,
+                    },
+                )?
         } else {
             let value = new_value.take().expect("not consumed yet");
             let child_node_id = NodeId::new();
@@ -722,7 +774,7 @@ fn try_replace_leaf_with_inner_node<T: PathTreeTypes>(
     try_clone_leaf_into_inner_value: &mut Option<
         impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,
     >,
-) -> Result<Arc<TreeNode<T>>, ()> {
+) -> Result<Arc<TreeNode<T>>, Arc<TreeNode<T>>> {
     let TreeNode {
         id,
         parent,
@@ -736,7 +788,7 @@ fn try_replace_leaf_with_inner_node<T: PathTreeTypes>(
         .expect("consumed at most once");
     let Some(inner_value) = try_clone_leaf_into_inner_value(leaf_value) else {
         // Keep this leaf node
-        return Err(());
+        return Err(node);
     };
     // Replace leaf node with empty inner node
     let inner_node = TreeNode {

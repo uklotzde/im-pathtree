@@ -29,6 +29,7 @@ mod tree;
 pub use self::tree::{
     AncestorTreeNodeIter, InsertOrUpdateNodeValueError, MatchNodePath, MatchedNodePath,
     ParentChildTreeNode, PathTree, PathTreeTypes, RemovedSubtree, ResolvedNodePath, TreeNode,
+    TreeNodeParentChildPathConflict,
 };
 
 #[cfg(feature = "im")]
