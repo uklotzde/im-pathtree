@@ -211,7 +211,6 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Returns the found node and the number of resolved path segments.
     #[must_use]
-    #[allow(clippy::type_complexity)]
     #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
     pub fn resolve_node_path(
         &self,
