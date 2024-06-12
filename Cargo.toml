@@ -15,8 +15,8 @@ include = ["/src", "/README.md", "/LICENSES"]
 
 [dependencies]
 derive_more = "0.99.17"
-log = "0.4.20"
-thiserror = "1.0.56"
+log = "0.4.21"
+thiserror = "1.0.61"
 
 im = { version = "15.1.0", optional = true }
 
@@ -39,3 +39,8 @@ pedantic = "warn"
 clone_on_ref_ptr = "warn"
 missing_const_for_fn = "warn"
 self_named_module_files = "warn"
+
+# This warns even when lint group and lint have the same level (`warn`).
+# This is very misleading and results in lots of false positives.
+# See also: <https://github.com/rust-lang/rust-clippy/issues/12270>
+lint_groups_priority = "allow"
