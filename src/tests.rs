@@ -136,7 +136,7 @@ fn single_leaf_node() {
         .insert_or_update_node_value(
             &SlashPath::ROOT,
             NodeValue::Leaf(42),
-            Default::default,
+            &mut Default::default,
             |_| None
         )
         .is_ok());
@@ -144,7 +144,7 @@ fn single_leaf_node() {
         .insert_or_update_node_value(
             &SlashPath::ROOT,
             NodeValue::Inner(-1),
-            Default::default,
+            &mut Default::default,
             |_| None
         )
         .is_err());
@@ -158,7 +158,7 @@ fn single_leaf_node() {
         .insert_or_update_node_value(
             &SlashPath::new(Cow::Borrowed("/foo/bar")),
             NodeValue::Leaf(1),
-            || -2, // Creates the parent node "/foo" with value -2
+            &mut || -2, // Creates the parent node "/foo" with value -2
             |_| None
         )
         .is_err());
@@ -167,7 +167,7 @@ fn single_leaf_node() {
         .insert_or_update_node_value(
             &SlashPath::new(Cow::Borrowed("/foo/bar")),
             NodeValue::Leaf(1),
-            || -2, // Creates the parent node "/foo" with value -2
+            &mut || -2, // Creates the parent node "/foo" with value -2
             |&leaf_value| leaf_value.try_into().ok()
         )
         .is_ok());
@@ -208,7 +208,7 @@ fn multiple_nodes() {
         .insert_or_update_node_value(
             &SlashPath::new(Cow::Borrowed("/foo/bar")),
             NodeValue::Leaf(1),
-            || -2, // Creates the parent node "/foo" with value -2
+            &mut || -2, // Creates the parent node "/foo" with value -2
             |_| None
         )
         .is_ok());
@@ -244,7 +244,7 @@ fn multiple_nodes() {
         .insert_or_update_node_value(
             &SlashPath::ROOT,
             NodeValue::Inner(-42),
-            Default::default,
+            &mut Default::default,
             |_| None
         )
         .is_ok());
@@ -252,7 +252,7 @@ fn multiple_nodes() {
         .insert_or_update_node_value(
             &SlashPath::ROOT,
             NodeValue::Leaf(42),
-            Default::default,
+            &mut Default::default,
             |_| None
         )
         .is_err());
@@ -282,7 +282,7 @@ fn multiple_nodes() {
         .insert_or_update_node_value(
             &SlashPath::new(Cow::Borrowed("/foo/bar/baz")),
             NodeValue::Leaf(3),
-            || 0,
+            &mut || 0,
             |_| None
         )
         .is_err());
@@ -291,7 +291,7 @@ fn multiple_nodes() {
         .insert_or_update_node_value(
             &SlashPath::new(Cow::Borrowed("/foo/bar/baz")),
             NodeValue::Leaf(3),
-            || 0,
+            &mut || 0,
             |&leaf_value| leaf_value.try_into().ok().map(|v: isize| -v)
         )
         .is_ok());

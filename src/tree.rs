@@ -419,7 +419,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         &mut self,
         path: &T::RootPath,
         new_value: NodeValue<T>,
-        new_inner_value: impl FnMut() -> T::InnerValue,
+        new_inner_value: &mut impl FnMut() -> T::InnerValue,
         try_clone_leaf_into_inner_value: impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,
     ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
         let TreeNodeParentChildContext {
