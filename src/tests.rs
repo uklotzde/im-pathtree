@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use crate::{RootPath, SegmentedPath};
+use crate::{MatchNodePath, MatchedNodePath, RootPath, SegmentedPath};
 
 /// A lazy path implementation for testing.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -386,4 +386,182 @@ fn multiple_nodes() {
         assert!(path_tree.remove_subtree(path_tree.root_node_id()).is_none());
         assert_eq!(4, path_tree.node_count());
     }
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn resolve_node_path() {
+    let mut path_tree = PathTree::new(NodeValue::Inner(0));
+    let mut new_inner_value = {
+        let mut inner_value = 0;
+        move || {
+            inner_value -= 1;
+            inner_value
+        }
+    };
+
+    path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/one/two/three/four/five")),
+            NodeValue::Leaf(55),
+            &mut new_inner_value,
+            |_| None,
+        )
+        .unwrap();
+    path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/one/two/3/4/5")),
+            NodeValue::Leaf(5),
+            &mut new_inner_value,
+            |_| None,
+        )
+        .unwrap();
+    path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/one/two/3/4/6")),
+            NodeValue::Leaf(6),
+            &mut new_inner_value,
+            |_| None,
+        )
+        .unwrap();
+
+    for match_node_path in [MatchNodePath::Full, MatchNodePath::PartialOrFull] {
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 0
+            },
+            path_tree
+                .resolve_node_path(&SlashPath::new(Cow::Borrowed("/")), match_node_path)
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 1
+            },
+            path_tree
+                .resolve_node_path(&SlashPath::new(Cow::Borrowed("/one")), match_node_path)
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 2
+            },
+            path_tree
+                .resolve_node_path(&SlashPath::new(Cow::Borrowed("/one/two")), match_node_path)
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 3
+            },
+            path_tree
+                .resolve_node_path(
+                    &SlashPath::new(Cow::Borrowed("/one/two/three")),
+                    match_node_path
+                )
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 3
+            },
+            path_tree
+                .resolve_node_path(
+                    &SlashPath::new(Cow::Borrowed("/one/two/3")),
+                    match_node_path
+                )
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 4
+            },
+            path_tree
+                .resolve_node_path(
+                    &SlashPath::new(Cow::Borrowed("/one/two/three/four")),
+                    match_node_path
+                )
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 4
+            },
+            path_tree
+                .resolve_node_path(
+                    &SlashPath::new(Cow::Borrowed("/one/two/3/4")),
+                    match_node_path
+                )
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 5
+            },
+            path_tree
+                .resolve_node_path(
+                    &SlashPath::new(Cow::Borrowed("/one/two/three/four/five")),
+                    match_node_path
+                )
+                .unwrap()
+                .matched_path
+        );
+        assert_eq!(
+            MatchedNodePath::Full {
+                number_of_segments: 5
+            },
+            path_tree
+                .resolve_node_path(
+                    &SlashPath::new(Cow::Borrowed("/one/two/3/4/5")),
+                    match_node_path
+                )
+                .unwrap()
+                .matched_path
+        );
+    }
+
+    assert!(path_tree
+        .resolve_node_path(
+            &SlashPath::new(Cow::Borrowed("/one/two/foo")),
+            MatchNodePath::Full
+        )
+        .is_none());
+    assert_eq!(
+        MatchedNodePath::Partial {
+            number_of_matched_segments: 2.try_into().unwrap()
+        },
+        path_tree
+            .resolve_node_path(
+                &SlashPath::new(Cow::Borrowed("/one/two/foo")),
+                MatchNodePath::PartialOrFull
+            )
+            .unwrap()
+            .matched_path
+    );
+
+    assert!(path_tree
+        .resolve_node_path(
+            &SlashPath::new(Cow::Borrowed("/one/two/foo/four")),
+            MatchNodePath::Full
+        )
+        .is_none());
+    assert_eq!(
+        MatchedNodePath::Partial {
+            number_of_matched_segments: 2.try_into().unwrap()
+        },
+        path_tree
+            .resolve_node_path(
+                &SlashPath::new(Cow::Borrowed("/one/two/foo/four")),
+                MatchNodePath::PartialOrFull
+            )
+            .unwrap()
+            .matched_path
+    );
 }
