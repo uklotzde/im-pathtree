@@ -1,17 +1,23 @@
 // SPDX-FileCopyrightText: The im-pathtree authors
 // SPDX-License-Identifier: MPL-2.0
 
-use std::{borrow::Borrow, fmt, marker::PhantomData, num::NonZeroUsize, sync::Arc};
+use std::{borrow::Borrow, fmt, hash::Hash, marker::PhantomData, num::NonZeroUsize, sync::Arc};
 
 use thiserror::Error;
 
 use crate::{
-    HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef, HashMap, InnerNode, LeafNode, Node, NodeId,
-    NodeValue, PathSegment, PathSegmentRef, RootPath, SegmentedPath as _,
+    HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef, HashMap, InnerNode, LeafNode, Node, NodeValue,
+    PathSegment, PathSegmentRef, RootPath, SegmentedPath as _,
 };
+
+pub trait NewNodeId<T> {
+    fn new_node_id(&mut self) -> T;
+}
 
 /// Type system for [`PathTree`].
 pub trait PathTreeTypes: Clone + Default + fmt::Debug {
+    type NodeId: Clone + Copy + PartialEq + Eq + Hash + fmt::Debug + fmt::Display;
+    type NewNodeId: NewNodeId<Self::NodeId> + Clone + fmt::Debug;
     type InnerValue: Clone + fmt::Debug;
     type LeafValue: Clone + fmt::Debug;
     type PathSegment: PathSegment + Borrow<Self::PathSegmentRef>;
@@ -70,7 +76,7 @@ where
     /// Descendant node IDs that have been removed recursively from the tree.
     ///
     /// The total number of removed nodes is `1 + descendant_node_ids.len()`.
-    pub descendant_node_ids: Vec<NodeId>,
+    pub descendant_node_ids: Vec<T::NodeId>,
 }
 
 impl<T> InsertOrUpdateNodeValueError<T>
@@ -92,8 +98,9 @@ pub struct PathTree<T>
 where
     T: PathTreeTypes,
 {
-    root_node_id: NodeId,
-    nodes: HashMap<NodeId, Arc<TreeNode<T>>>,
+    root_node_id: T::NodeId,
+    nodes: HashMap<T::NodeId, Arc<TreeNode<T>>>,
+    new_node_id: T::NewNodeId,
     _types: PhantomData<T>,
 }
 
@@ -140,25 +147,29 @@ where
 impl<T: PathTreeTypes> PathTree<T> {
     /// Create a new path tree with the given root node.
     #[must_use]
-    pub fn new(value: NodeValue<T>) -> Self {
-        let root_node_id = NodeId::new();
-        let root_node = Node::from_value(value);
+    pub fn new(mut new_node_id: T::NewNodeId, root_node_value: NodeValue<T>) -> Self {
+        let root_node_id = new_node_id.new_node_id();
         let root_node = TreeNode {
             id: root_node_id,
             parent: None,
-            node: root_node,
+            node: Node::from_value(root_node_value),
         };
         let mut nodes = HashMap::new();
         nodes.insert(root_node_id, Arc::new(root_node));
         Self {
             root_node_id,
+            new_node_id,
             nodes,
             _types: PhantomData,
         }
     }
 
+    fn new_node_id(&mut self) -> T::NodeId {
+        self.new_node_id.new_node_id()
+    }
+
     #[must_use]
-    pub const fn root_node_id(&self) -> NodeId {
+    pub const fn root_node_id(&self) -> T::NodeId {
         self.root_node_id
     }
 
@@ -168,12 +179,12 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 
     #[must_use]
-    pub fn contains_node(&self, id: NodeId) -> bool {
+    pub fn contains_node(&self, id: T::NodeId) -> bool {
         self.nodes.contains_key(&id)
     }
 
     #[must_use]
-    pub fn lookup_node(&self, id: NodeId) -> Option<&Arc<TreeNode<T>>> {
+    pub fn lookup_node(&self, id: T::NodeId) -> Option<&Arc<TreeNode<T>>> {
         self.nodes.get(&id)
     }
 
@@ -186,7 +197,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Panics if the node does not exist.
     #[must_use]
-    fn get_node(&self, id: NodeId) -> &Arc<TreeNode<T>> {
+    fn get_node(&self, id: T::NodeId) -> &Arc<TreeNode<T>> {
         self.nodes.get(&id).expect("node exists")
     }
 
@@ -332,7 +343,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             } else {
                 // Add new, empty inner node
                 let parent_node_id = next_parent_node.id;
-                let child_node_id = NodeId::new();
+                let child_node_id = self.new_node_id();
                 debug_assert_ne!(parent_node_id, child_node_id);
                 let child_node = TreeNode {
                     id: child_node_id,
@@ -514,7 +525,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                 )?
         } else {
             let value = new_value.take().expect("not consumed yet");
-            let child_node_id = NodeId::new();
+            let child_node_id = self.new_node_id();
             log::debug!("Adding new child node {child_node_id}");
             debug_assert!(!self.contains_node(child_node_id));
             TreeNode {
@@ -574,7 +585,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Returns the ID of the parent node and the IDs of the removed nodes.
     #[allow(clippy::missing_panics_doc)] // Never panics
-    pub fn remove_subtree(&mut self, node_id: NodeId) -> Option<RemovedSubtree<T>> {
+    pub fn remove_subtree(&mut self, node_id: T::NodeId) -> Option<RemovedSubtree<T>> {
         let node = self.lookup_node(node_id)?;
         // Collect the IDs of all nodes that will be removed before starting to mutate the tree!
         // Otherwise invariants might be violated.
@@ -687,7 +698,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// Returns the node and the respective path segment from the child node.
     pub fn ancestor_nodes(
         &self,
-        id: NodeId,
+        id: T::NodeId,
     ) -> impl Iterator<Item = HalfEdgeTreeNodeRef<'_, T>> + Clone {
         AncestorTreeNodeIter {
             tree: self,
@@ -699,7 +710,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn count_ancestor_nodes(&self, id: NodeId) -> Option<usize> {
+    pub fn count_ancestor_nodes(&self, id: T::NodeId) -> Option<usize> {
         let node = self.lookup_node(id)?;
         Some(AncestorTreeNodeIter::new(self, node).count())
     }
@@ -708,7 +719,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn count_descendant_nodes(&self, id: NodeId) -> Option<usize> {
+    pub fn count_descendant_nodes(&self, id: T::NodeId) -> Option<usize> {
         self.lookup_node(id)
             .map(|tree_node| tree_node.node.count_descendants(self))
     }
@@ -718,7 +729,7 @@ impl<T: PathTreeTypes> PathTree<T> {
 #[derive(Debug, Clone)]
 pub struct TreeNode<T: PathTreeTypes> {
     /// Identifier for direct lookup.
-    pub id: NodeId,
+    pub id: T::NodeId,
 
     /// Link to the parent node.
     ///
@@ -768,7 +779,7 @@ impl<T: PathTreeTypes> TreeNode<T> {
 }
 
 fn try_replace_leaf_with_inner_node<T: PathTreeTypes>(
-    nodes: &mut HashMap<NodeId, Arc<TreeNode<T>>>,
+    nodes: &mut HashMap<T::NodeId, Arc<TreeNode<T>>>,
     node: Arc<TreeNode<T>>,
     try_clone_leaf_into_inner_value: &mut Option<
         impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,

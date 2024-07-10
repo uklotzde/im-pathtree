@@ -3,7 +3,7 @@
 
 use std::borrow::Borrow as _;
 
-use crate::{HalfEdgeRef, HashMap, NodeId, PathTree, PathTreeTypes};
+use crate::{HalfEdgeRef, HashMap, PathTree, PathTreeTypes};
 
 const DESCENDANTS_ITER_STACK_CAPACITY: usize = 1024;
 
@@ -121,7 +121,7 @@ pub struct InnerNode<T>
 where
     T: PathTreeTypes,
 {
-    pub(crate) children: HashMap<T::PathSegment, NodeId>,
+    pub(crate) children: HashMap<T::PathSegment, T::NodeId>,
     pub value: <T as PathTreeTypes>::InnerValue,
 }
 

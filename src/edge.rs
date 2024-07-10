@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::{NodeId, PathTreeTypes, TreeNode};
+use crate::{PathTreeTypes, TreeNode};
 
 /// Half-edge to another node in the tree.
 ///
@@ -14,7 +14,7 @@ pub struct HalfEdge<T: PathTreeTypes> {
     pub path_segment: <T as PathTreeTypes>::PathSegment,
 
     /// The id of the target node.
-    pub node_id: NodeId,
+    pub node_id: T::NodeId,
 }
 
 /// Half-edge to another node in the tree.
@@ -26,7 +26,7 @@ pub struct HalfEdgeRef<'a, T: PathTreeTypes> {
     pub path_segment: &'a T::PathSegmentRef,
 
     /// The id of the target node.
-    pub node_id: NodeId,
+    pub node_id: T::NodeId,
 }
 
 /// Half-edge to another node in the tree.

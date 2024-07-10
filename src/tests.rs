@@ -97,9 +97,24 @@ fn slash_path() {
 }
 
 #[derive(Debug, Clone, Default)]
+struct NewNodeId {
+    next_node_id: usize,
+}
+
+impl crate::NewNodeId<usize> for NewNodeId {
+    fn new_node_id(&mut self) -> usize {
+        let next_node_id = self.next_node_id;
+        self.next_node_id = self.next_node_id.checked_add(1).unwrap();
+        next_node_id
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 struct PathTreeTypes;
 
 impl crate::PathTreeTypes for PathTreeTypes {
+    type NodeId = usize;
+    type NewNodeId = NewNodeId;
     type RootPath = SlashPath<'static>;
     type PathSegment = Cow<'static, str>;
     type PathSegmentRef = str;
@@ -124,7 +139,7 @@ const _: () = {
 
 #[test]
 fn single_leaf_node() {
-    let mut path_tree = PathTree::new(NodeValue::Leaf(23));
+    let mut path_tree = PathTree::new(Default::default(), NodeValue::Leaf(23));
     let root_node_id = path_tree.root_node_id();
 
     assert_eq!(1, path_tree.node_count());
@@ -196,7 +211,7 @@ fn single_leaf_node() {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn multiple_nodes() {
-    let mut path_tree = PathTree::new(NodeValue::Inner(-23));
+    let mut path_tree = PathTree::new(Default::default(), NodeValue::Inner(-23));
     let root_node_id = path_tree.root_node_id();
 
     assert_eq!(1, path_tree.node_count());
@@ -391,7 +406,7 @@ fn multiple_nodes() {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn resolve_node_path() {
-    let mut path_tree = PathTree::new(NodeValue::Inner(0));
+    let mut path_tree = PathTree::new(Default::default(), NodeValue::Inner(0));
     let mut new_inner_value = {
         let mut inner_value = 0;
         move || {

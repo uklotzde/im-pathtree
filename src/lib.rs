@@ -19,15 +19,12 @@ pub use self::edge::{HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef};
 mod node;
 pub use self::node::{DepthFirstDescendantsIter, InnerNode, LeafNode, Node, NodeValue};
 
-mod node_id;
-pub use self::node_id::NodeId;
-
 mod path;
 pub use self::path::{PathSegment, PathSegmentRef, RootPath, SegmentedPath};
 
 mod tree;
 pub use self::tree::{
-    AncestorTreeNodeIter, InsertOrUpdateNodeValueError, MatchNodePath, MatchedNodePath,
+    AncestorTreeNodeIter, InsertOrUpdateNodeValueError, MatchNodePath, MatchedNodePath, NewNodeId,
     ParentChildTreeNode, PathTree, PathTreeTypes, RemovedSubtree, ResolvedNodePath, TreeNode,
     TreeNodeParentChildPathConflict,
 };
