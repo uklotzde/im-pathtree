@@ -11,6 +11,7 @@ repository = "https://github.com/uklotzde/im-pathtree"
 categories = ["data-structures"]
 keywords = ["immutable", "tree", "path"]
 edition = "2021"
+rust-version = "1.74"
 include = ["/src", "/README.md", "/LICENSES"]
 
 [dependencies]
