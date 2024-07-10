@@ -40,6 +40,18 @@ clone_on_ref_ptr = "warn"
 missing_const_for_fn = "warn"
 self_named_module_files = "warn"
 
+# Repeating the type name in `Default::default()` expressions is not needed as
+# long as the context is obvious.
+default_trait_access = "allow"
+
+# The error types returned should be self-explanatory.
+missing_errors_doc = "allow"
+
+# Repetitions of module/type names occur frequently when using many modules for
+# keeping the size of the source files handy. Often types have the same name as
+# their parent module.
+module_name_repetitions = "allow"
+
 # This warns even when lint group and lint have the same level (`warn`).
 # This is very misleading and results in lots of false positives.
 # See also: <https://github.com/rust-lang/rust-clippy/issues/12270>

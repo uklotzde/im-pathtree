@@ -3,16 +3,6 @@
 
 //! Immutable, path-addressable tree data structure.
 
-// Repetitions of module/type names occur frequently when using many
-// modules for keeping the size of the source files handy. Often
-// types have the same name as their parent module.
-#![allow(clippy::module_name_repetitions)]
-// Repeating the type name in `Default::default()` expressions is not needed
-// as long as the context is obvious.
-#![allow(clippy::default_trait_access)]
-// TODO: Add missing docs
-#![allow(clippy::missing_errors_doc)]
-
 mod edge;
 pub use self::edge::{HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef};
 
