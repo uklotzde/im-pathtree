@@ -59,6 +59,7 @@ where
 {
     pub parent_node: Option<Arc<TreeNode<T>>>,
     pub child_node: Arc<TreeNode<T>>,
+    pub replaced_child_node: Option<Arc<TreeNode<T>>>,
 }
 
 /// Return type when removing a node from the tree.
@@ -471,6 +472,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             return Ok(ParentChildTreeNode {
                 parent_node: None,
                 child_node: new_root_node,
+                replaced_child_node: old_root_node,
             });
         };
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
@@ -574,6 +576,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         Ok(ParentChildTreeNode {
             parent_node: Some(new_parent_node),
             child_node: new_child_node,
+            replaced_child_node: old_child_node,
         })
     }
 
