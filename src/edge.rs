@@ -8,7 +8,7 @@ use crate::{PathTreeTypes, TreeNode};
 /// Half-edge to another node in the tree.
 ///
 /// Owns the path segment.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HalfEdge<T: PathTreeTypes> {
     /// Path segment from the (implicit) source to the target node.
     pub path_segment: <T as PathTreeTypes>::PathSegment,
@@ -20,7 +20,7 @@ pub struct HalfEdge<T: PathTreeTypes> {
 /// Half-edge to another node in the tree.
 ///
 /// Borrows the path segment.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HalfEdgeRef<'a, T: PathTreeTypes> {
     /// Path segment from the (implicit) source to the target node.
     pub path_segment: &'a T::PathSegmentRef,
