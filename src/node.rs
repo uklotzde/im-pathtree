@@ -70,16 +70,6 @@ impl<T> Node<T>
 where
     T: PathTreeTypes,
 {
-    /// Returns the number of children
-    ///
-    /// Only includes direct children, not grandchildren or other descendants.
-    pub fn number_of_children(&self) -> usize {
-        match self {
-            Self::Inner(inner) => inner.number_of_children(),
-            Self::Leaf(_) => 0,
-        }
-    }
-
     /// Returns an iterator over all children of this node
     ///
     /// Only includes direct children, not grandchildren or other descendants.
@@ -90,22 +80,31 @@ where
         }
     }
 
-    /// Returns an iterator over all descendants of this node
+    /// Returns the number of children.
     ///
-    /// Recursively traverse the subtree.
+    /// Only includes direct children, not grandchildren or other descendants.
     ///
-    /// The ordering of nodes is undefined and an implementation detail. Only parent
-    /// nodes are guaranteed to be visited before their children.
-    pub fn descendants<'a>(&'a self, tree: &'a PathTree<T>) -> DepthFirstDescendantsIter<'a, T> {
+    /// In constant time, i.e. O(1).
+    pub fn children_count(&self) -> usize {
+        match self {
+            Self::Inner(inner) => inner.children_count(),
+            Self::Leaf(_) => 0,
+        }
+    }
+
+    pub(crate) fn descendants<'a>(
+        &'a self,
+        tree: &'a PathTree<T>,
+    ) -> DepthFirstDescendantsIter<'a, T> {
         match self {
             Self::Inner(inner) => inner.descendants(tree),
             Self::Leaf(_) => DepthFirstDescendantsIter::empty(tree),
         }
     }
 
-    pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
+    pub(crate) fn descendants_count<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
         match self {
-            Self::Inner(inner) => inner.count_descendants(tree),
+            Self::Inner(inner) => inner.descendants_count(tree),
             Self::Leaf(_) => 0,
         }
     }
@@ -133,13 +132,6 @@ where
         }
     }
 
-    /// Return the number of children
-    ///
-    /// Only includes direct children, not grandchildren or other descendants.
-    pub fn number_of_children(&self) -> usize {
-        self.children.len()
-    }
-
     /// Edges to children of this node
     ///
     /// In arbitrary but stable ordering.
@@ -152,6 +144,15 @@ where
             })
     }
 
+    /// Returns the number of children.
+    ///
+    /// Only includes direct children, not grandchildren or other descendants.
+    ///
+    /// In constant time, i.e. O(1).
+    pub fn children_count(&self) -> usize {
+        self.children.len()
+    }
+
     fn descendants<'a>(&'a self, tree: &'a PathTree<T>) -> DepthFirstDescendantsIter<'a, T> {
         let mut iter = DepthFirstDescendantsIter::new(tree, DESCENDANTS_ITER_STACK_CAPACITY);
         iter.push_parent(self);
@@ -161,7 +162,9 @@ where
     /// Number of descendants of this node
     ///
     /// Recursively counts all descendants of this node.
-    pub fn count_descendants<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
+    ///
+    /// More efficient than `descendants().count()`.
+    pub fn descendants_count<'a>(&'a self, tree: &'a PathTree<T>) -> usize {
         // This recursive implementation is probably faster than `descendants().count()`.
         // TODO: Replace by a non-recursive version.
         self.children().fold(
@@ -175,7 +178,7 @@ where
                     + 1
                     + tree
                         .lookup_node(node_id)
-                        .map_or(0, |node| node.node.count_descendants(tree))
+                        .map_or(0, |node| node.node.descendants_count(tree))
             },
         )
     }
@@ -183,7 +186,7 @@ where
 
 /// Iterator over descendants of a node
 ///
-/// Returned by [`Node::descendants()`].
+/// Returned by [`PathTree::descendant_nodes()`].
 #[derive(Debug)]
 pub struct DepthFirstDescendantsIter<'a, T>
 where

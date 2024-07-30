@@ -199,11 +199,6 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 
     #[must_use]
-    pub fn contains_node(&self, id: T::NodeId) -> bool {
-        self.nodes.contains_key(&id)
-    }
-
-    #[must_use]
     pub fn lookup_node(&self, id: T::NodeId) -> Option<&Arc<TreeNode<T>>> {
         self.nodes.get(&id)
     }
@@ -236,6 +231,12 @@ impl<T: PathTreeTypes> PathTree<T> {
                 node
             },
         )
+    }
+
+    #[must_use]
+    pub fn contains_node(&self, node: &Arc<TreeNode<T>>) -> bool {
+        self.lookup_node(node.id)
+            .map_or(false, |tree_node| Arc::ptr_eq(tree_node, node))
     }
 
     /// Find a node by its path.
@@ -498,10 +499,8 @@ impl<T: PathTreeTypes> PathTree<T> {
         child_path_segment: &<T as PathTreeTypes>::PathSegmentRef,
         new_value: NodeValue<T>,
     ) -> Result<ParentChildTreeNode<T>, InsertOrUpdateNodeValueError<T>> {
+        debug_assert!(self.contains_node(parent_node));
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
-        debug_assert!(self
-            .lookup_node(parent_node.id)
-            .map_or(false, |tree_node| Arc::ptr_eq(tree_node, parent_node)));
         let Node::Inner(inner_node) = &parent_node.node else {
             return Err(InsertOrUpdateNodeValueError::PathConflict {
                 conflict: TreeNodeParentChildPathConflict {
@@ -531,7 +530,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         }
         let child_node_id = self.new_node_id();
         log::debug!("Adding new child node {child_node_id}");
-        debug_assert!(!self.contains_node(child_node_id));
+        debug_assert!(!self.nodes.contains_key(&child_node_id));
         let new_child_node = TreeNode {
             id: child_node_id,
             parent: Some(HalfEdge {
@@ -577,7 +576,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         Ok(ParentChildTreeNode {
             parent_node: Some(new_parent_node),
             child_node: new_child_node,
-            replaced_child_node: old_child_node,
+            replaced_child_node: None,
         })
     }
 
@@ -597,9 +596,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         node: &Arc<TreeNode<T>>,
         new_value: NodeValue<T>,
     ) -> Result<Arc<TreeNode<T>>, UpdateNodeValueError<T>> {
-        debug_assert!(self
-            .lookup_node(node.id)
-            .map_or(false, |tree_node| Arc::ptr_eq(tree_node, node)));
+        debug_assert!(self.contains_node(node));
         let new_node = Arc::new(node.try_clone_with_value(new_value)?);
         let old_node = self.nodes.insert(node.id, Arc::clone(&new_node));
         debug_assert!(old_node.is_some());
@@ -616,13 +613,13 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Returns the ID of the parent node and the IDs of the removed nodes.
     #[allow(clippy::missing_panics_doc)] // Never panics
-    pub fn remove_subtree(&mut self, node_id: T::NodeId) -> Option<RemovedSubtree<T>> {
-        let node = self.lookup_node(node_id)?;
+    #[allow(clippy::result_unit_err)] // Cannot remove root node
+    pub fn remove_subtree(&mut self, node: &Arc<TreeNode<T>>) -> Result<RemovedSubtree<T>, ()> {
         // Collect the IDs of all nodes that will be removed before starting to mutate the tree!
         // Otherwise invariants might be violated.
-        let descendant_node_ids = node
-            .node
-            .descendants(self)
+        let node_id = node.id;
+        let descendant_node_ids = self
+            .descendant_nodes(node)
             .map(
                 |HalfEdgeRef {
                      path_segment: _,
@@ -630,17 +627,21 @@ impl<T: PathTreeTypes> PathTree<T> {
                  }| node_id,
             )
             .collect::<Vec<_>>();
-        let node_count_before = self.node_count();
+        let nodes_count_before = self.nodes_count();
         // Disconnect the subtree from the parent node.
         let new_parent_node = {
-            let child_node = self.lookup_node(node_id)?;
+            let child_node = node;
             debug_assert_eq!(child_node.id, node_id);
-            let (path_segment_to_parent, parent_node) = child_node.parent.as_ref().map(
+            let Some((path_segment_to_parent, parent_node)) = child_node.parent.as_ref().map(
                 |HalfEdge {
                      path_segment: path_segment_to_parent,
                      node_id,
                  }| (path_segment_to_parent.borrow(), self.get_node(*node_id)),
-            )?;
+            ) else {
+                // Cannot remove the root node.
+                debug_assert_eq!(node_id, self.root_node_id());
+                return Err(());
+            };
             debug_assert!(matches!(parent_node.node, Node::Inner(_)));
             let Node::Inner(inner_node) = &parent_node.node else {
                 unreachable!();
@@ -669,12 +670,12 @@ impl<T: PathTreeTypes> PathTree<T> {
             self.nodes.remove(node_id);
         }
         // The tree is now in a consistent state again.
-        let node_count_after = self.node_count();
-        debug_assert!(node_count_before >= node_count_after);
-        let number_of_nodes_removed = node_count_before - node_count_after;
-        debug_assert_eq!(number_of_nodes_removed, 1 + descendant_node_ids.len());
-        debug_assert!(number_of_nodes_removed > 0);
-        Some(RemovedSubtree {
+        let nodes_count_after = self.nodes_count();
+        debug_assert!(nodes_count_before >= nodes_count_after);
+        let removed_nodes_count = nodes_count_before - nodes_count_after;
+        debug_assert_eq!(removed_nodes_count, 1 + descendant_node_ids.len());
+        debug_assert!(removed_nodes_count > 0);
+        Ok(RemovedSubtree {
             node,
             parent_node: new_parent_node,
             descendant_node_ids,
@@ -682,6 +683,8 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 
     /// Retain only the nodes that match the given predicate.
+    ///
+    /// The root node is always retained and cannot be removed.
     ///
     /// Returns the number of nodes that have been removed.
     #[allow(clippy::missing_panics_doc)] // Never panics
@@ -691,18 +694,25 @@ impl<T: PathTreeTypes> PathTree<T> {
         // children don't need to be visited.
         let mut node_ids_to_remove = Vec::new();
         for node in self.nodes() {
-            if !predicate(node) {
+            if !predicate(node) && node.id != self.root_node_id() {
                 node_ids_to_remove.push(node.id);
             }
         }
         // Remove the subtrees in reverse order of the depth of their root node.
-        node_ids_to_remove.sort_by(|lhs, rhs| {
-            let lhs_depth = self.count_ancestor_nodes(*lhs).expect("node exists");
-            let rhs_depth = self.count_ancestor_nodes(*rhs).expect("node exists");
+        node_ids_to_remove.sort_by(|lhs_id, rhs_id| {
+            let lhs_node = self.get_node(*lhs_id);
+            let rhs_node = self.get_node(*rhs_id);
+            let lhs_depth = self.ancestor_nodes_count(lhs_node);
+            let rhs_depth = self.ancestor_nodes_count(rhs_node);
             lhs_depth.cmp(&rhs_depth)
         });
         for node_id in node_ids_to_remove {
-            self.remove_subtree(node_id);
+            let Some(node) = self.lookup_node(node_id) else {
+                // Already removed.
+                continue;
+            };
+            self.remove_subtree(&Arc::clone(node))
+                .expect("removing the subtree should never fail");
         }
     }
 
@@ -712,13 +722,15 @@ impl<T: PathTreeTypes> PathTree<T> {
     }
 
     /// Total number of nodes in the tree.
+    ///
+    /// In constant time, i.e. O(1).
     #[must_use]
-    pub fn node_count(&self) -> usize {
+    pub fn nodes_count(&self) -> usize {
         let node_count = self.nodes.len();
         // Verify invariants
         debug_assert_eq!(
             node_count,
-            1 + self.root_node().node.count_descendants(self)
+            1 + self.root_node().node.descendants_count(self)
         );
         debug_assert_eq!(node_count, self.nodes().count());
         node_count
@@ -726,33 +738,40 @@ impl<T: PathTreeTypes> PathTree<T> {
 
     /// Iterator over all ancestor nodes of the given node.
     ///
-    /// Returns the node and the respective path segment from the child node.
-    pub fn ancestor_nodes(
-        &self,
-        id: T::NodeId,
+    /// Returns the parent node and the respective path segment from the child node
+    /// in bottom-up order.
+    pub fn ancestor_nodes<'a>(
+        &'a self,
+        node: &'a Arc<TreeNode<T>>,
     ) -> impl Iterator<Item = HalfEdgeTreeNodeRef<'_, T>> + Clone {
-        AncestorTreeNodeIter {
-            tree: self,
-            next_node: self.lookup_node(id),
-        }
+        AncestorTreeNodeIter::new(self, node)
     }
 
     /// The number of parent nodes of the given node up to the root node.
-    ///
-    /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn count_ancestor_nodes(&self, id: T::NodeId) -> Option<usize> {
-        let node = self.lookup_node(id)?;
-        Some(AncestorTreeNodeIter::new(self, node).count())
+    pub fn ancestor_nodes_count(&self, node: &Arc<TreeNode<T>>) -> usize {
+        self.ancestor_nodes(node).count()
+    }
+
+    /// Returns an iterator over all descendants of this node
+    ///
+    /// Recursively traverses the subtree.
+    ///
+    /// The ordering of nodes is undefined and an implementation detail. Only parent
+    /// nodes are guaranteed to be visited before their children.
+    pub fn descendant_nodes<'a>(
+        &'a self,
+        node: &'a Arc<TreeNode<T>>,
+    ) -> impl Iterator<Item = HalfEdgeRef<'a, T>> {
+        debug_assert!(self.contains_node(node));
+        node.node.descendants(self)
     }
 
     /// Number of child nodes of the given node (recursively).
-    ///
-    /// Returns `None` if the given node is not found.
     #[must_use]
-    pub fn count_descendant_nodes(&self, id: T::NodeId) -> Option<usize> {
-        self.lookup_node(id)
-            .map(|tree_node| tree_node.node.count_descendants(self))
+    pub fn descendant_nodes_count(&self, node: &Arc<TreeNode<T>>) -> usize {
+        debug_assert!(self.contains_node(node));
+        node.node.descendants_count(self)
     }
 }
 
@@ -879,7 +898,7 @@ impl<'a, T: PathTreeTypes> AncestorTreeNodeIter<'a, T> {
     /// debug builds. Otherwise the iterator will be empty.
     #[must_use]
     pub fn new(tree: &'a PathTree<T>, node: &'a Arc<TreeNode<T>>) -> Self {
-        debug_assert!(tree.contains_node(node.id));
+        debug_assert!(tree.contains_node(node));
         Self {
             tree,
             next_node: Some(node),
