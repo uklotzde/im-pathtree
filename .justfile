@@ -32,7 +32,7 @@ setup:
 # Upgrade (and update) dependencies
 upgrade: setup
     pre-commit autoupdate
-    cargo upgrade --incompatible --pinned
+    cargo upgrade --ignore-rust-version --incompatible
     cargo update
 
 # Run pre-commit hooks
