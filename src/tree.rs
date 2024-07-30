@@ -363,14 +363,13 @@ impl<T: PathTreeTypes> PathTree<T> {
                 next_parent_node = Arc::clone(child_node);
             } else {
                 // Add new, empty inner node
-                let parent_node_id = next_parent_node.id;
                 let child_node_id = self.new_node_id();
-                debug_assert_ne!(parent_node_id, child_node_id);
+                debug_assert_ne!(child_node_id, next_parent_node.id);
                 let child_node = TreeNode {
                     id: child_node_id,
                     parent: Some(HalfEdge {
                         path_segment: path_segment.to_owned(),
-                        node_id: parent_node_id,
+                        node_id: next_parent_node.id,
                     }),
                     node: Node::Inner(InnerNode::new(new_inner_value())),
                 };
@@ -378,7 +377,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                     "Inserting new child node {child_node:?} for path segment {path_segment:?}"
                 );
                 let child_node = Arc::new(child_node);
-                let new_parent_node = Arc::clone(&child_node);
+                let new_next_parent_node = Arc::clone(&child_node);
                 let old_child_node = self.nodes.insert(child_node.id, child_node);
                 debug_assert!(old_child_node.is_none());
                 let mut inner_node = inner_node.clone();
@@ -392,12 +391,14 @@ impl<T: PathTreeTypes> PathTree<T> {
                     parent: next_parent_node.parent.clone(),
                     node: inner_node.into(),
                 };
+                let parent_node_id = parent_node.id;
                 let old_parent_node = self.nodes.insert(parent_node_id, Arc::new(parent_node));
                 log::debug!(
                     "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
-                    old_parent_node = old_parent_node.expect("old parent exists")
+                    old_parent_node = old_parent_node.expect("old parent exists"),
+                    new_parent_node = self.nodes.get(&parent_node_id).expect("new parent exists"),
                 );
-                next_parent_node = new_parent_node;
+                next_parent_node = new_next_parent_node;
             }
             debug_assert_eq!(
                 path_segment,
