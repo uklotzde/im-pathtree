@@ -87,16 +87,11 @@ pub struct RemovedSubtree<T>
 where
     T: PathTreeTypes,
 {
-    /// Root node of the removed subtree.
-    pub node: Arc<TreeNode<T>>,
-
     /// Updated parent node of the removed node.
     pub parent_node: Arc<TreeNode<T>>,
 
-    /// Descendant node IDs that have been removed recursively from the tree.
-    ///
-    /// The total number of removed nodes is `1 + descendant_node_ids.len()`.
-    pub descendant_node_ids: Vec<T::NodeId>,
+    /// Removed subtree.
+    pub removed_subtree: PathTree<T>,
 }
 
 impl<T> InsertOrUpdateNodeValueError<T>
@@ -608,19 +603,22 @@ impl<T: PathTreeTypes> PathTree<T> {
 
     /// Remove a node and its children from the tree.
     ///
-    /// Removes the entire subtree rooted at the given node.
+    /// Removes and returns the entire subtree rooted at the given node.
     ///
     /// The root node cannot be removed.
     ///
-    /// Returns the ID of the parent node and the IDs of the removed nodes.
     #[allow(clippy::missing_panics_doc)] // Never panics
-    #[allow(clippy::result_unit_err)] // Cannot remove root node
-    pub fn remove_subtree(&mut self, node: &Arc<TreeNode<T>>) -> Result<RemovedSubtree<T>, ()> {
-        // Collect the IDs of all nodes that will be removed before starting to mutate the tree!
-        // Otherwise invariants might be violated.
-        let node_id = node.id;
-        let descendant_node_ids = self
-            .descendant_nodes(node)
+    /// Returns `None` if the tree has not been modified.
+    pub fn remove_subtree_by_id(&mut self, node_id: T::NodeId) -> Option<RemovedSubtree<T>> {
+        if node_id == self.root_node_id {
+            // Cannot remove the root node.
+            return None;
+        }
+        let nodes_count_before = self.nodes_count();
+        let node = self.nodes.remove(&node_id)?;
+        let descendant_node_ids = node
+            .node
+            .descendants(self)
             .map(
                 |HalfEdgeRef {
                      path_segment: _,
@@ -628,27 +626,30 @@ impl<T: PathTreeTypes> PathTree<T> {
                  }| node_id,
             )
             .collect::<Vec<_>>();
-        let nodes_count_before = self.nodes_count();
+        #[cfg(feature = "im")]
+        let mut subtree_nodes: HashMap<_, _> = descendant_node_ids
+            .into_iter()
+            .filter_map(|node_id| self.nodes.remove_with_key(&node_id))
+            .collect();
+        #[cfg(not(feature = "im"))]
+        let mut subtree_nodes: HashMap<_, _> = descendant_node_ids
+            .into_iter()
+            .filter_map(|node_id| self.nodes.remove_entry(&node_id))
+            .collect();
         // Disconnect the subtree from the parent node.
         let new_parent_node = {
-            let child_node = node;
-            debug_assert_eq!(child_node.id, node_id);
-            let Some((path_segment_to_parent, parent_node)) = child_node.parent.as_ref().map(
-                |HalfEdge {
-                     path_segment: path_segment_to_parent,
-                     node_id,
-                 }| (path_segment_to_parent.borrow(), self.get_node(*node_id)),
-            ) else {
-                // Cannot remove the root node.
-                debug_assert_eq!(node_id, self.root_node_id());
-                return Err(());
-            };
+            debug_assert!(node.parent.is_some());
+            let HalfEdge {
+                path_segment: path_segment_to_parent,
+                node_id: parent_node_id,
+            } = node.parent.as_ref().expect("has parent");
+            let parent_node = self.nodes.get(parent_node_id).expect("parent node exists");
             debug_assert!(matches!(parent_node.node, Node::Inner(_)));
             let Node::Inner(inner_node) = &parent_node.node else {
                 unreachable!();
             };
             let mut inner_node = inner_node.clone();
-            let removed_id = inner_node.children.remove(path_segment_to_parent);
+            let removed_id = inner_node.children.remove(path_segment_to_parent.borrow());
             debug_assert_eq!(removed_id, Some(node_id));
             TreeNode {
                 id: parent_node.id,
@@ -666,20 +667,25 @@ impl<T: PathTreeTypes> PathTree<T> {
             "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
             new_parent_node = self.get_node(parent_node_id)
         );
-        let node = self.nodes.remove(&node_id).expect("node exists");
-        for node_id in &descendant_node_ids {
-            self.nodes.remove(node_id);
-        }
-        // The tree is now in a consistent state again.
+        // The tree is now back in a consistent state and we can use the public API.
         let nodes_count_after = self.nodes_count();
         debug_assert!(nodes_count_before >= nodes_count_after);
         let removed_nodes_count = nodes_count_before - nodes_count_after;
-        debug_assert_eq!(removed_nodes_count, 1 + descendant_node_ids.len());
-        debug_assert!(removed_nodes_count > 0);
-        Ok(RemovedSubtree {
-            node,
+        let subtree_root_node = Arc::new(TreeNode {
+            parent: None,
+            ..Arc::unwrap_or_clone(node)
+        });
+        subtree_nodes.insert(node_id, subtree_root_node);
+        let removed_subtree = Self {
+            root_node_id: node_id,
+            nodes: subtree_nodes,
+            new_node_id: self.new_node_id.clone(),
+            _types: PhantomData,
+        };
+        debug_assert_eq!(removed_nodes_count, removed_subtree.nodes_count());
+        Some(RemovedSubtree {
             parent_node: new_parent_node,
-            descendant_node_ids,
+            removed_subtree,
         })
     }
 
@@ -708,17 +714,12 @@ impl<T: PathTreeTypes> PathTree<T> {
             lhs_depth.cmp(&rhs_depth)
         });
         for node_id in node_ids_to_remove {
-            let Some(node) = self.lookup_node(node_id) else {
-                // Already removed.
-                continue;
-            };
-            self.remove_subtree(&Arc::clone(node))
-                .expect("removing the subtree should never fail");
+            self.remove_subtree_by_id(node_id);
         }
     }
 
     /// All nodes in no particular order.
-    pub fn nodes(&self) -> impl Iterator<Item = &Arc<TreeNode<T>>> {
+    pub fn nodes(&self) -> impl ExactSizeIterator<Item = &Arc<TreeNode<T>>> {
         self.nodes.values()
     }
 
