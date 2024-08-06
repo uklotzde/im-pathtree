@@ -721,10 +721,6 @@ impl<T: PathTreeTypes> PathTree<T> {
     ///
     /// Returns the new `NodeId` of the inserted/replaced node, i.e. the
     /// root node of the subtree.
-    ///
-    /// On error the resulting tree might be partially modified or
-    /// inconsistent and should be discarded! Only invoke this method
-    /// on a mutable clone.
     #[allow(clippy::missing_panics_doc)] // Never panics
     pub fn insert_or_replace_subtree(
         &mut self,
@@ -791,7 +787,8 @@ impl<T: PathTreeTypes> PathTree<T> {
                 )
                 .inspect_err(|_| {
                     // Insertion could only fail for the first node,
-                    // which is the root node of the subtree.
+                    // which is the root node of the subtree. This ensures
+                    // that `self` remains unchanged on error.
                     debug_assert_eq!(old_node_id, subtree.root_node_id());
                 })?;
             let new_node_id = child_node.id;
