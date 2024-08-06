@@ -11,7 +11,7 @@ use crate::{PathTreeTypes, TreeNode};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HalfEdge<T: PathTreeTypes> {
     /// Path segment from the (implicit) source to the target node.
-    pub path_segment: <T as PathTreeTypes>::PathSegment,
+    pub path_segment: T::PathSegment,
 
     /// The id of the target node.
     pub node_id: T::NodeId,

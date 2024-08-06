@@ -19,7 +19,7 @@ where
     T: PathTreeTypes,
 {
     Inner(InnerNode<T>),
-    Leaf(LeafNode<<T as PathTreeTypes>::LeafValue>),
+    Leaf(LeafNode<T::LeafValue>),
 }
 
 impl<T> Node<T>
@@ -57,11 +57,11 @@ where
     }
 }
 
-impl<T> From<LeafNode<<T as PathTreeTypes>::LeafValue>> for Node<T>
+impl<T> From<LeafNode<T::LeafValue>> for Node<T>
 where
     T: PathTreeTypes,
 {
-    fn from(leaf: LeafNode<<T as PathTreeTypes>::LeafValue>) -> Self {
+    fn from(leaf: LeafNode<T::LeafValue>) -> Self {
         Self::Leaf(leaf)
     }
 }
@@ -117,7 +117,7 @@ where
     T: PathTreeTypes,
 {
     pub(crate) children: HashMap<T::PathSegment, T::NodeId>,
-    pub value: <T as PathTreeTypes>::InnerValue,
+    pub value: T::InnerValue,
 }
 
 impl<T> InnerNode<T>
@@ -125,7 +125,7 @@ where
     T: PathTreeTypes,
 {
     /// Create an empty inner node with no children
-    pub(crate) fn new(value: <T as PathTreeTypes>::InnerValue) -> Self {
+    pub(crate) fn new(value: T::InnerValue) -> Self {
         Self {
             children: HashMap::new(),
             value,

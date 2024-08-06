@@ -350,8 +350,10 @@ fn multiple_nodes() {
         assert_eq!(0, descendant_nodes_count);
         let RemovedSubtree {
             parent_node: _,
+            child_path_segment,
             removed_subtree,
         } = path_tree.remove_subtree_by_id(node.id).unwrap();
+        debug_assert_eq!(child_path_segment.as_ref(), "baz");
         debug_assert_eq!(1 + descendant_nodes_count, removed_subtree.nodes_count());
         assert_eq!(3, path_tree.nodes_count());
     }
@@ -367,8 +369,10 @@ fn multiple_nodes() {
         assert_eq!(1, descendant_nodes_count);
         let RemovedSubtree {
             parent_node: _,
+            child_path_segment,
             removed_subtree,
         } = path_tree.remove_subtree_by_id(node.id).unwrap();
+        debug_assert_eq!(child_path_segment.as_ref(), "bar");
         debug_assert_eq!(1 + descendant_nodes_count, removed_subtree.nodes_count());
         assert_eq!(2, path_tree.nodes_count());
     }
@@ -384,8 +388,10 @@ fn multiple_nodes() {
         assert_eq!(2, descendant_nodes_count);
         let RemovedSubtree {
             parent_node: _,
+            child_path_segment,
             removed_subtree,
         } = path_tree.remove_subtree_by_id(node.id).unwrap();
+        debug_assert_eq!(child_path_segment.as_ref(), "foo");
         debug_assert_eq!(1 + descendant_nodes_count, removed_subtree.nodes_count());
         // Only the root node remains.
         assert_eq!(1, path_tree.nodes_count());
