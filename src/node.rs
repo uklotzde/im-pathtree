@@ -92,6 +92,16 @@ where
         }
     }
 
+    /// Find a child node by its path segment.
+    ///
+    /// Returns the id of the child node or `None` if not found.
+    pub fn find_child(&self, child_path_segment: &T::PathSegmentRef) -> Option<T::NodeId> {
+        match self {
+            Self::Inner(inner) => inner.find_child(child_path_segment),
+            Self::Leaf(_) => None,
+        }
+    }
+
     pub(crate) fn descendants<'a>(
         &'a self,
         tree: &'a PathTree<T>,
@@ -151,6 +161,13 @@ where
     /// In constant time, i.e. O(1).
     pub fn children_count(&self) -> usize {
         self.children.len()
+    }
+
+    /// Find a child node by its path segment.
+    ///
+    /// Returns the id of the child node or `None` if not found.
+    pub fn find_child(&self, child_path_segment: &T::PathSegmentRef) -> Option<T::NodeId> {
+        self.children.get(child_path_segment).copied()
     }
 
     fn descendants<'a>(&'a self, tree: &'a PathTree<T>) -> DepthFirstDescendantsIter<'a, T> {
