@@ -15,7 +15,6 @@ rust-version = "1.76"
 include = ["/src", "/README.md", "/LICENSES"]
 
 [dependencies]
-derive_more = "0.99.18"
 itertools = "0.13.0"
 log = "0.4.22"
 thiserror = "1.0.63"
