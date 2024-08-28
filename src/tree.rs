@@ -104,6 +104,19 @@ where
     pub removed_subtree: PathTree<T>,
 }
 
+/// Return type when inserting or replacing a subtree.
+#[derive(Debug, Clone)]
+pub struct InsertedOrReplacedSubtree<T>
+where
+    T: PathTreeTypes,
+{
+    /// New root node id.
+    pub root_node_id: T::NodeId,
+
+    /// Replaced nodes.
+    pub replaced_nodes: Vec<Arc<TreeNode<T>>>,
+}
+
 impl<T> InsertOrUpdateNodeValueError<T>
 where
     T: PathTreeTypes,
@@ -223,7 +236,6 @@ impl<T: PathTreeTypes> PathTree<T> {
 
     /// Find a node by its path.
     #[must_use]
-    #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
     pub fn find_node(&self, path: &T::RootPath) -> Option<&Arc<TreeNode<T>>> {
         self.resolve_node_path(path, MatchNodePath::Full).map(
             |ResolvedNodePath { node, matched_path }| {
@@ -726,9 +738,6 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// By providing `old_child_path_segment` an existing node could
     /// be renamed and replaced by the subtree. This will retain its
     /// `NodeId`.
-    ///
-    /// Returns the new `NodeId` of the inserted/replaced node, i.e. the
-    /// root node of the subtree.
     #[allow(clippy::missing_panics_doc)] // Never panics
     pub fn insert_or_replace_subtree(
         &mut self,
@@ -736,8 +745,9 @@ impl<T: PathTreeTypes> PathTree<T> {
         child_path_segment: &T::PathSegmentRef,
         old_child_path_segment: Option<&T::PathSegmentRef>,
         mut subtree: Self,
-    ) -> Result<T::NodeId, InsertOrUpdateNodeValueError<T>> {
+    ) -> Result<InsertedOrReplacedSubtree<T>, InsertOrUpdateNodeValueError<T>> {
         debug_assert!(self.contains_node(parent_node));
+        let mut replaced_nodes = vec![];
         let subtree_node_ids = std::iter::once(subtree.root_node_id())
             .chain(subtree.root_node().node.descendants(&subtree).map(
                 |HalfEdgeRef {
@@ -750,6 +760,8 @@ impl<T: PathTreeTypes> PathTree<T> {
             std::collections::HashMap::<T::NodeId, T::NodeId>::with_capacity(
                 subtree_node_ids.len(),
             );
+        let subtree_nodes_count = subtree.nodes_count();
+        let nodes_count_before = self.nodes_count();
         // Will be replaced by the newly generated id.
         let mut new_subtree_root_node_id = subtree.root_node_id();
         for old_node_id in subtree_node_ids {
@@ -792,7 +804,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             let ParentChildTreeNode {
                 parent_node: _,
                 child_node,
-                replaced_child_node: _,
+                replaced_child_node,
             } = self
                 .insert_or_update_child_node_value(
                     &Arc::clone(parent_node),
@@ -806,6 +818,9 @@ impl<T: PathTreeTypes> PathTree<T> {
                     // that `self` remains unchanged on error.
                     debug_assert_eq!(old_node_id, subtree.root_node_id());
                 })?;
+            if let Some(replaced_node) = replaced_child_node {
+                replaced_nodes.push(replaced_node);
+            }
             let new_node_id = child_node.id;
             debug_assert!(!old_to_new_node_id.contains_key(&old_node_id));
             old_to_new_node_id.insert(old_node_id, new_node_id);
@@ -813,7 +828,16 @@ impl<T: PathTreeTypes> PathTree<T> {
                 new_subtree_root_node_id = new_node_id;
             };
         }
-        Ok(new_subtree_root_node_id)
+        let nodes_count_after: usize = self.nodes_count();
+        debug_assert!(nodes_count_before >= replaced_nodes.len());
+        debug_assert_eq!(
+            nodes_count_after,
+            nodes_count_before - replaced_nodes.len() + subtree_nodes_count
+        );
+        Ok(InsertedOrReplacedSubtree {
+            root_node_id: new_subtree_root_node_id,
+            replaced_nodes,
+        })
     }
 
     /// Retain only the nodes that match the given predicate.
