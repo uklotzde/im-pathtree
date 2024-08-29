@@ -110,11 +110,16 @@ pub struct InsertedOrReplacedSubtree<T>
 where
     T: PathTreeTypes,
 {
-    /// New root node id.
-    pub root_node_id: T::NodeId,
+    /// New parent node.
+    ///
+    /// Updated parent node that contains the subtree as child.
+    pub parent_node: Arc<TreeNode<T>>,
 
-    /// Replaced nodes.
-    pub replaced_nodes: Vec<Arc<TreeNode<T>>>,
+    /// The root node of the inserted subtree.
+    pub child_node_id: T::NodeId,
+
+    /// Replaced child node.
+    pub replaced_child_node: Option<Arc<TreeNode<T>>>,
 }
 
 impl<T> InsertOrUpdateNodeValueError<T>
@@ -747,96 +752,97 @@ impl<T: PathTreeTypes> PathTree<T> {
         mut subtree: Self,
     ) -> Result<InsertedOrReplacedSubtree<T>, InsertOrUpdateNodeValueError<T>> {
         debug_assert!(self.contains_node(parent_node));
-        let mut replaced_nodes = vec![];
-        let subtree_node_ids = std::iter::once(subtree.root_node_id())
-            .chain(subtree.root_node().node.descendants(&subtree).map(
-                |HalfEdgeRef {
-                     path_segment: _,
-                     node_id,
-                 }| node_id,
-            ))
-            .collect::<Vec<_>>();
-        let mut old_to_new_node_id =
-            std::collections::HashMap::<T::NodeId, T::NodeId>::with_capacity(
-                subtree_node_ids.len(),
-            );
-        let subtree_nodes_count = subtree.nodes_count();
-        let nodes_count_before = self.nodes_count();
-        // Will be replaced by the newly generated id.
-        let mut new_subtree_root_node_id = subtree.root_node_id();
-        for old_node_id in subtree_node_ids {
-            let old_node = subtree.nodes.remove(&old_node_id).expect("node exists");
-            // Ideally, the nodes in the subtree are not referenced in the outer
-            // context to avoid cloning them. For most use cases this assumption
-            // should be valid.
-            let TreeNode {
-                id: _,
-                parent,
-                node,
-            } = Arc::unwrap_or_clone(old_node);
-            // TODO: This could be optimized when not reusing insert_or_update_child_node_value()
-            // and instead inserting or replacing the node directly.
-            let (parent_node, child_path_segment, old_child_path_segment) =
-                if let Some(parent) = parent {
-                    debug_assert!(old_to_new_node_id.contains_key(&parent.node_id));
-                    let parent_node_id = old_to_new_node_id
-                        .get(&parent.node_id)
-                        .copied()
-                        .expect("parent node has already been inserted");
-                    let parent_node = self
-                        .nodes
-                        .get(&parent_node_id)
-                        .expect("parent node has already been inserted");
-                    (parent_node, parent.path_segment, None)
-                } else {
-                    // Root node.
-                    debug_assert_eq!(old_node_id, subtree.root_node_id());
-                    (
-                        parent_node,
-                        child_path_segment.to_owned(),
-                        old_child_path_segment,
-                    )
+        let mut subtree_parent_node = None;
+        // Initialized with the old node id, which will be replaced with the new node id
+        // after the root node of the subtree has been inserted/replaced.
+        let mut subtree_child_node_id = subtree.root_node_id();
+        let mut subtree_replaced_child_node = None;
+        {
+            let subtree_node_ids = std::iter::once(subtree.root_node_id())
+                .chain(subtree.root_node().node.descendants(&subtree).map(
+                    |HalfEdgeRef {
+                         path_segment: _,
+                         node_id,
+                     }| node_id,
+                ))
+                .collect::<Vec<_>>();
+            let mut old_to_new_node_id =
+                std::collections::HashMap::<T::NodeId, T::NodeId>::with_capacity(
+                    subtree_node_ids.len(),
+                );
+            for old_node_id in subtree_node_ids {
+                let old_node = subtree.nodes.remove(&old_node_id).expect("node exists");
+                // Ideally, the nodes in the subtree are not referenced in the outer
+                // context to avoid cloning them. For most use cases this assumption
+                // should be valid.
+                let TreeNode {
+                    id: _,
+                    parent,
+                    node,
+                } = Arc::unwrap_or_clone(old_node);
+                // TODO: This could be optimized when not reusing insert_or_update_child_node_value()
+                // and instead inserting or replacing the node directly.
+                let (parent_node, child_path_segment, old_child_path_segment) =
+                    if let Some(parent) = parent {
+                        debug_assert!(old_to_new_node_id.contains_key(&parent.node_id));
+                        let parent_node_id = old_to_new_node_id
+                            .get(&parent.node_id)
+                            .copied()
+                            .expect("parent node has already been inserted");
+                        let parent_node = self
+                            .nodes
+                            .get(&parent_node_id)
+                            .expect("parent node has already been inserted");
+                        (parent_node, parent.path_segment, None)
+                    } else {
+                        // Root node.
+                        debug_assert_eq!(old_node_id, subtree.root_node_id());
+                        (
+                            parent_node,
+                            child_path_segment.to_owned(),
+                            old_child_path_segment,
+                        )
+                    };
+                let node_value = match node {
+                    Node::Inner(inner) => NodeValue::Inner(inner.value),
+                    Node::Leaf(leaf) => NodeValue::Leaf(leaf.value),
                 };
-            let node_value = match node {
-                Node::Inner(inner) => NodeValue::Inner(inner.value),
-                Node::Leaf(leaf) => NodeValue::Leaf(leaf.value),
-            };
-            let ParentChildTreeNode {
-                parent_node: _,
-                child_node,
-                replaced_child_node,
-            } = self
-                .insert_or_update_child_node_value(
-                    &Arc::clone(parent_node),
-                    child_path_segment.borrow(),
-                    old_child_path_segment,
-                    node_value,
-                )
-                .inspect_err(|_| {
-                    // Insertion could only fail for the first node,
-                    // which is the root node of the subtree. This ensures
-                    // that `self` remains unchanged on error.
-                    debug_assert_eq!(old_node_id, subtree.root_node_id());
-                })?;
-            if let Some(replaced_node) = replaced_child_node {
-                replaced_nodes.push(replaced_node);
+                let ParentChildTreeNode {
+                    parent_node,
+                    child_node,
+                    replaced_child_node,
+                } = self
+                    .insert_or_update_child_node_value(
+                        &Arc::clone(parent_node),
+                        child_path_segment.borrow(),
+                        old_child_path_segment,
+                        node_value,
+                    )
+                    .inspect_err(|_| {
+                        // Insertion could only fail for the first node,
+                        // which is the root node of the subtree. This ensures
+                        // that `self` remains unchanged on error.
+                        debug_assert_eq!(old_node_id, subtree.root_node_id());
+                    })?;
+                debug_assert!(parent_node.is_some());
+                let new_node_id = child_node.id;
+                if old_node_id == subtree.root_node_id() {
+                    // Subtree root node.
+                    subtree_parent_node = parent_node;
+                    subtree_child_node_id = new_node_id;
+                    subtree_replaced_child_node = replaced_child_node;
+                } else {
+                    // Subtree descendant node.
+                    debug_assert!(replaced_child_node.is_none());
+                }
+                debug_assert!(!old_to_new_node_id.contains_key(&old_node_id));
+                old_to_new_node_id.insert(old_node_id, new_node_id);
             }
-            let new_node_id = child_node.id;
-            debug_assert!(!old_to_new_node_id.contains_key(&old_node_id));
-            old_to_new_node_id.insert(old_node_id, new_node_id);
-            if old_node_id == subtree.root_node_id() {
-                new_subtree_root_node_id = new_node_id;
-            };
         }
-        let nodes_count_after: usize = self.nodes_count();
-        debug_assert!(nodes_count_before >= replaced_nodes.len());
-        debug_assert_eq!(
-            nodes_count_after,
-            nodes_count_before - replaced_nodes.len() + subtree_nodes_count
-        );
         Ok(InsertedOrReplacedSubtree {
-            root_node_id: new_subtree_root_node_id,
-            replaced_nodes,
+            parent_node: subtree_parent_node.expect("has been updated"),
+            child_node_id: subtree_child_node_id,
+            replaced_child_node: subtree_replaced_child_node,
         })
     }
 
