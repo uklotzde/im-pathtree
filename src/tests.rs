@@ -751,3 +751,91 @@ fn update_node_value() {
             .leaf_value()
     );
 }
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn update_and_rename_node_value() {
+    let mut path_tree = PathTree::new(Default::default(), NodeValue::Inner(-23));
+
+    assert_eq!(1, path_tree.nodes_count());
+    assert_eq!(0, path_tree.descendant_nodes_count(path_tree.root_node()));
+    assert_eq!(Some(&-23), path_tree.root_node().node.inner_value());
+
+    // Insert two new leaf nodes with its parent
+    assert!(path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/foo/bar")),
+            NodeValue::Leaf(1),
+            &mut || -2, // Creates the parent node "/foo" with value -2
+            |_| None
+        )
+        .is_ok());
+    assert!(path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/foo/baz")),
+            NodeValue::Leaf(2),
+            &mut || unreachable!(),
+            |_| None
+        )
+        .is_ok());
+
+    assert_eq!(4, path_tree.nodes_count());
+
+    let leaf_node_id = path_tree
+        .find_node(&SlashPath::new(Cow::Borrowed("/foo/bar")))
+        .unwrap()
+        .id;
+    assert_eq!(
+        Some(&1),
+        path_tree
+            .lookup_node(leaf_node_id)
+            .unwrap()
+            .node
+            .leaf_value()
+    );
+
+    // Update the value and rename the leaf node.
+    let parent_node = Arc::clone(
+        path_tree
+            .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
+            .unwrap(),
+    );
+    assert!(path_tree
+        .insert_or_update_child_node_value(&parent_node, "bar2", Some("bar"), NodeValue::Leaf(3))
+        .is_ok());
+    assert_eq!(4, path_tree.nodes_count());
+    assert_eq!(
+        Some(&3),
+        path_tree
+            .lookup_node(leaf_node_id)
+            .unwrap()
+            .node
+            .leaf_value()
+    );
+
+    // Update the value and rename the leaf node again, replacing the node "/foo/baz".
+    let replaced_leaf_node_path = SlashPath::new(Cow::Borrowed("/foo/baz"));
+    let replaced_leaf_node_id = path_tree.find_node(&replaced_leaf_node_path).unwrap().id;
+    let parent_node = Arc::clone(
+        path_tree
+            .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
+            .unwrap(),
+    );
+    assert!(path_tree
+        .insert_or_update_child_node_value(&parent_node, "baz", Some("bar2"), NodeValue::Leaf(4))
+        .is_ok());
+    assert_eq!(3, path_tree.nodes_count());
+    assert_eq!(
+        Some(&4),
+        path_tree
+            .lookup_node(leaf_node_id)
+            .unwrap()
+            .node
+            .leaf_value()
+    );
+    assert_eq!(
+        leaf_node_id,
+        path_tree.find_node(&replaced_leaf_node_path).unwrap().id
+    );
+    assert!(path_tree.lookup_node(replaced_leaf_node_id).is_none());
+}
