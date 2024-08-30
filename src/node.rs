@@ -26,11 +26,13 @@ impl<T> Node<T>
 where
     T: PathTreeTypes,
 {
-    pub(crate) fn from_value(value: NodeValue<T>) -> Self {
-        match value {
+    pub(crate) fn from_value_without_children(value: NodeValue<T>) -> Self {
+        let node = match value {
             NodeValue::Inner(value) => Self::Inner(InnerNode::new(value)),
             NodeValue::Leaf(value) => Self::Leaf(LeafNode::new(value)),
-        }
+        };
+        debug_assert_eq!(node.children_count(), 0);
+        node
     }
 
     pub const fn inner_value(&self) -> Option<&T::InnerValue> {

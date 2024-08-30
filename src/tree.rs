@@ -199,7 +199,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         let root_node = TreeNode {
             id: root_node_id,
             parent: None,
-            node: Node::from_value(root_node_value),
+            node: Node::from_value_without_children(root_node_value),
         };
         let mut nodes = HashMap::new();
         nodes.insert(root_node_id, Arc::new(root_node));
@@ -559,6 +559,12 @@ impl<T: PathTreeTypes> PathTree<T> {
                 let new_child_node = self.update_node_value(&old_child_node, new_value)?;
                 (Arc::clone(parent_node), new_child_node, None)
             } else {
+                let new_parent = HalfEdge {
+                    path_segment: child_path_segment.to_owned(),
+                    node_id: parent_node.id,
+                };
+                let updated_child_node =
+                    old_child_node.try_clone_with_parent_and_value(Some(new_parent), new_value)?;
                 let (mut inner_node, removed_subtree) = if let Some(subtree_root_node_id) =
                     parent_node.node.find_child(child_path_segment)
                 {
@@ -584,16 +590,8 @@ impl<T: PathTreeTypes> PathTree<T> {
                 let removed_child_node_id = inner_node.children.remove(old_child_path_segment);
                 debug_assert_eq!(removed_child_node_id, Some(child_node_id));
                 debug_assert!(self.nodes.contains_key(&child_node_id));
-                let new_child_node = TreeNode {
-                    id: child_node_id,
-                    parent: Some(HalfEdge {
-                        path_segment: child_path_segment.to_owned(),
-                        node_id: parent_node.id,
-                    }),
-                    node: Node::from_value(new_value),
-                };
-                let child_node_id = new_child_node.id;
-                let new_child_node = Arc::new(new_child_node);
+                let child_node_id = updated_child_node.id;
+                let new_child_node = Arc::new(updated_child_node);
                 let replaced_child_node = self
                     .nodes
                     .insert(child_node_id, Arc::clone(&new_child_node));
@@ -640,7 +638,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                 path_segment: child_path_segment.to_owned(),
                 node_id: parent_node.id,
             }),
-            node: Node::from_value(new_value),
+            node: Node::from_value_without_children(new_value),
         };
         let child_node_id = new_child_node.id;
         let new_child_node = Arc::new(new_child_node);
@@ -1032,7 +1030,14 @@ pub struct TreeNode<T: PathTreeTypes> {
 }
 
 impl<T: PathTreeTypes> TreeNode<T> {
-    /// Clone the node with a new value.
+    fn try_clone_with_value(
+        &self,
+        new_value: NodeValue<T>,
+    ) -> Result<Self, UpdateNodeValueError<T>> {
+        self.try_clone_with_parent_and_value(None, new_value)
+    }
+
+    /// Clones the node with a new parent and value.
     ///
     /// Leaf values could be replaced by both leaf and inner values.
     /// An inner value could only be replaced by a leaf value, if the
@@ -1040,8 +1045,9 @@ impl<T: PathTreeTypes> TreeNode<T> {
     ///
     /// Fails if the type of the new value is incompatible with the
     /// current value type of the node, depending on its children.
-    fn try_clone_with_value(
+    fn try_clone_with_parent_and_value(
         &self,
+        new_parent: Option<HalfEdge<T>>,
         new_value: NodeValue<T>,
     ) -> Result<Self, UpdateNodeValueError<T>> {
         let new_node = match &self.node {
@@ -1051,7 +1057,7 @@ impl<T: PathTreeTypes> TreeNode<T> {
                         // Remains an inner node with the current children and the new value.
                         Self {
                             id: self.id,
-                            parent: self.parent.clone(),
+                            parent: new_parent.or_else(|| self.parent.clone()),
                             node: Node::Inner(InnerNode {
                                 children: children.clone(),
                                 value: new_value,
@@ -1066,8 +1072,8 @@ impl<T: PathTreeTypes> TreeNode<T> {
                         }
                         Self {
                             id: self.id,
-                            parent: self.parent.clone(),
-                            node: Node::from_value(new_value),
+                            parent: new_parent.or_else(|| self.parent.clone()),
+                            node: Node::from_value_without_children(new_value),
                         }
                     }
                 }
@@ -1076,8 +1082,8 @@ impl<T: PathTreeTypes> TreeNode<T> {
                 // Leaf node values could be replaced by both leaf and inner node values.
                 Self {
                     id: self.id,
-                    parent: self.parent.clone(),
-                    node: Node::from_value(new_value),
+                    parent: new_parent.or_else(|| self.parent.clone()),
+                    node: Node::from_value_without_children(new_value),
                 }
             }
         };

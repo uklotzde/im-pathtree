@@ -3,7 +3,9 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use crate::{MatchNodePath, MatchedNodePath, RemovedSubtree, RootPath, SegmentedPath};
+use crate::{
+    MatchNodePath, MatchedNodePath, ParentChildTreeNode, RemovedSubtree, RootPath, SegmentedPath,
+};
 
 /// A lazy path implementation for testing.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -109,7 +111,7 @@ impl crate::NewNodeId<usize> for NewNodeId {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 struct PathTreeTypes;
 
 impl crate::PathTreeTypes for PathTreeTypes {
@@ -754,26 +756,25 @@ fn update_node_value() {
 
 #[test]
 #[allow(clippy::too_many_lines)]
-fn update_and_rename_node_value() {
+fn insert_or_update_child_node_value_leaf() {
     let mut path_tree = PathTree::new(Default::default(), NodeValue::Inner(-23));
 
     assert_eq!(1, path_tree.nodes_count());
     assert_eq!(0, path_tree.descendant_nodes_count(path_tree.root_node()));
     assert_eq!(Some(&-23), path_tree.root_node().node.inner_value());
 
-    // Insert two new leaf nodes with its parent
     assert!(path_tree
         .insert_or_update_node_value(
             &SlashPath::new(Cow::Borrowed("/foo/bar")),
-            NodeValue::Leaf(1),
-            &mut || -2, // Creates the parent node "/foo" with value -2
+            NodeValue::Leaf(2),
+            &mut || -1, // Creates the parent node "/foo" with value -1
             |_| None
         )
         .is_ok());
     assert!(path_tree
         .insert_or_update_node_value(
             &SlashPath::new(Cow::Borrowed("/foo/baz")),
-            NodeValue::Leaf(2),
+            NodeValue::Leaf(3),
             &mut || unreachable!(),
             |_| None
         )
@@ -786,7 +787,7 @@ fn update_and_rename_node_value() {
         .unwrap()
         .id;
     assert_eq!(
-        Some(&1),
+        Some(&2),
         path_tree
             .lookup_node(leaf_node_id)
             .unwrap()
@@ -800,31 +801,15 @@ fn update_and_rename_node_value() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    assert!(path_tree
-        .insert_or_update_child_node_value(&parent_node, "bar2", Some("bar"), NodeValue::Leaf(3))
-        .is_ok());
+    let ParentChildTreeNode {
+        parent_node: _,
+        child_node,
+        replaced_child_node,
+        removed_subtree,
+    } = path_tree
+        .insert_or_update_child_node_value(&parent_node, "bar2", Some("bar"), NodeValue::Leaf(4))
+        .unwrap();
     assert_eq!(4, path_tree.nodes_count());
-    assert_eq!(
-        Some(&3),
-        path_tree
-            .lookup_node(leaf_node_id)
-            .unwrap()
-            .node
-            .leaf_value()
-    );
-
-    // Update the value and rename the leaf node again, replacing the node "/foo/baz".
-    let replaced_leaf_node_path = SlashPath::new(Cow::Borrowed("/foo/baz"));
-    let replaced_leaf_node_id = path_tree.find_node(&replaced_leaf_node_path).unwrap().id;
-    let parent_node = Arc::clone(
-        path_tree
-            .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
-            .unwrap(),
-    );
-    assert!(path_tree
-        .insert_or_update_child_node_value(&parent_node, "baz", Some("bar2"), NodeValue::Leaf(4))
-        .is_ok());
-    assert_eq!(3, path_tree.nodes_count());
     assert_eq!(
         Some(&4),
         path_tree
@@ -833,9 +818,207 @@ fn update_and_rename_node_value() {
             .node
             .leaf_value()
     );
+    // Children of the updated node have not changed.
+    assert_eq!(
+        replaced_child_node
+            .unwrap()
+            .node
+            .children()
+            .collect::<Vec<_>>(),
+        child_node.node.children().collect::<Vec<_>>()
+    );
+    // No subtree has been removed.
+    assert!(removed_subtree.is_none());
+
+    // Update the value and rename the leaf node again, replacing the node "/foo/baz".
+    let replaced_node_path = SlashPath::new(Cow::Borrowed("/foo/baz"));
+    let replaced_node_id = path_tree.find_node(&replaced_node_path).unwrap().id;
+    let parent_node = Arc::clone(
+        path_tree
+            .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
+            .unwrap(),
+    );
+    let ParentChildTreeNode {
+        parent_node: _,
+        child_node,
+        replaced_child_node,
+        removed_subtree,
+    } = path_tree
+        .insert_or_update_child_node_value(&parent_node, "baz", Some("bar2"), NodeValue::Leaf(5))
+        .unwrap();
+    assert_eq!(3, path_tree.nodes_count());
+    assert_eq!(
+        Some(&5),
+        path_tree
+            .lookup_node(leaf_node_id)
+            .unwrap()
+            .node
+            .leaf_value()
+    );
     assert_eq!(
         leaf_node_id,
-        path_tree.find_node(&replaced_leaf_node_path).unwrap().id
+        path_tree.find_node(&replaced_node_path).unwrap().id
     );
-    assert!(path_tree.lookup_node(replaced_leaf_node_id).is_none());
+    // Children of the updated node have not changed.
+    assert_eq!(
+        replaced_child_node
+            .unwrap()
+            .node
+            .children()
+            .collect::<Vec<_>>(),
+        child_node.node.children().collect::<Vec<_>>()
+    );
+    // The replaced node becomes the root node of the removed subtree.
+    assert!(path_tree.lookup_node(replaced_node_id).is_none());
+    assert_eq!(1, removed_subtree.as_ref().unwrap().nodes_count());
+    assert_eq!(
+        replaced_node_id,
+        removed_subtree.as_ref().unwrap().root_node_id()
+    );
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn insert_or_update_child_node_value_inner() {
+    let mut path_tree = PathTree::new(Default::default(), NodeValue::Inner(-23));
+
+    assert_eq!(1, path_tree.nodes_count());
+    assert_eq!(0, path_tree.descendant_nodes_count(path_tree.root_node()));
+    assert_eq!(Some(&-23), path_tree.root_node().node.inner_value());
+
+    assert!(path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/foo/inner")),
+            NodeValue::Leaf(2),
+            &mut || -1, // Creates the parent node "/foo" with value -1
+            |_| None
+        )
+        .is_ok());
+    //
+    assert!(path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/foo/inner/leaf")),
+            NodeValue::Leaf(42),
+            &mut || unreachable!(),
+            |value| {
+                // Transform the former leaf node into an inner node.
+                assert_eq!(2, *value);
+                Some(-2)
+            }
+        )
+        .is_ok());
+    assert!(path_tree
+        .insert_or_update_node_value(
+            &SlashPath::new(Cow::Borrowed("/foo/bar")),
+            NodeValue::Leaf(3),
+            &mut || unreachable!(),
+            |_| None
+        )
+        .is_ok());
+
+    assert_eq!(5, path_tree.nodes_count());
+
+    let inner_node_id = path_tree
+        .find_node(&SlashPath::new(Cow::Borrowed("/foo/inner")))
+        .unwrap()
+        .id;
+    assert_eq!(
+        Some(&-2),
+        path_tree
+            .lookup_node(inner_node_id)
+            .unwrap()
+            .node
+            .inner_value()
+    );
+
+    // Update the value and rename the inner node.
+    let parent_node = Arc::clone(
+        path_tree
+            .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
+            .unwrap(),
+    );
+    let ParentChildTreeNode {
+        parent_node: _,
+        child_node,
+        replaced_child_node,
+        removed_subtree,
+    } = path_tree
+        .insert_or_update_child_node_value(
+            &parent_node,
+            "inner2",
+            Some("inner"),
+            NodeValue::Inner(-4),
+        )
+        .unwrap();
+    assert_eq!(5, path_tree.nodes_count());
+    assert_eq!(
+        Some(&-4),
+        path_tree
+            .lookup_node(inner_node_id)
+            .unwrap()
+            .node
+            .inner_value()
+    );
+    // Children of the updated node have not changed.
+    assert_eq!(
+        replaced_child_node
+            .unwrap()
+            .node
+            .children()
+            .collect::<Vec<_>>(),
+        child_node.node.children().collect::<Vec<_>>()
+    );
+    // No subtree has been removed.
+    assert!(removed_subtree.is_none());
+
+    // Update the value and rename the inner node again, replacing the node "/foo/bar".
+    let replaced_node_path = SlashPath::new(Cow::Borrowed("/foo/bar"));
+    let replaced_node_id = path_tree.find_node(&replaced_node_path).unwrap().id;
+    let parent_node = Arc::clone(
+        path_tree
+            .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
+            .unwrap(),
+    );
+    let ParentChildTreeNode {
+        parent_node: _,
+        child_node,
+        replaced_child_node,
+        removed_subtree,
+    } = path_tree
+        .insert_or_update_child_node_value(
+            &parent_node,
+            "bar",
+            Some("inner2"),
+            NodeValue::Inner(-5),
+        )
+        .unwrap();
+    assert_eq!(4, path_tree.nodes_count());
+    assert_eq!(
+        Some(&-5),
+        path_tree
+            .lookup_node(inner_node_id)
+            .unwrap()
+            .node
+            .inner_value()
+    );
+    assert_eq!(
+        inner_node_id,
+        path_tree.find_node(&replaced_node_path).unwrap().id
+    );
+    // Children of the updated node have not changed.
+    assert_eq!(
+        replaced_child_node
+            .unwrap()
+            .node
+            .children()
+            .collect::<Vec<_>>(),
+        child_node.node.children().collect::<Vec<_>>()
+    );
+    // The replaced node becomes the root node of the removed subtree.
+    assert!(path_tree.lookup_node(replaced_node_id).is_none());
+    assert_eq!(1, removed_subtree.as_ref().unwrap().nodes_count());
+    assert_eq!(
+        replaced_node_id,
+        removed_subtree.as_ref().unwrap().root_node_id()
+    );
 }
