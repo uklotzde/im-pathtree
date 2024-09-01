@@ -14,10 +14,10 @@ pub use self::path::{PathSegment, PathSegmentRef, RootPath, SegmentedPath};
 
 mod tree;
 pub use self::tree::{
-    AncestorTreeNodeIter, ChildNodeChangeset, InsertOrUpdateNodeValueError,
-    InsertedOrReplacedSubtree, MatchNodePath, MatchedNodePath, NewNodeId, PathTree, PathTreeTypes,
+    AncestorTreeNodeIter, InsertOrUpdateNodeValueError, InsertedOrReplacedSubtree,
+    InsertedOrUpdatedNode, MatchNodePath, MatchedNodePath, NewNodeId, PathTree, PathTreeTypes,
     RemovedSubtree, ResolvedNodePath, TreeNode, TreeNodeParentChildPathConflict,
-    UpdateNodeValueError,
+    UpdateNodeValueError, UpdatedParentNode,
 };
 
 #[cfg(feature = "im")]
