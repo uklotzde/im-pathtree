@@ -68,31 +68,14 @@ where
     }
 }
 
-/// Return type of [`PathTree::insert_or_update_node_value()`].
-///
-/// Updating an immutable node in the tree requires to update its parent node.
 #[derive(Debug, Clone)]
-pub struct InsertOrUpdateNodeValue<T>
+pub struct ChildNodeChangeset<T>
 where
     T: PathTreeTypes,
 {
-    pub parent_node: Option<Arc<TreeNode<T>>>,
-    pub child_node: Arc<TreeNode<T>>,
-    pub replaced_child_node: Option<Arc<TreeNode<T>>>,
-    pub removed_subtree: Option<PathTree<T>>,
-}
-
-/// Return type of [`PathTree::insert_or_update_child_node_value()`].
-///
-/// Updating an immutable node in the tree requires to update its parent node.
-#[derive(Debug, Clone)]
-pub struct InsertOrUpdateChildNodeValue<T>
-where
-    T: PathTreeTypes,
-{
-    pub parent_node: Arc<TreeNode<T>>,
-    pub child_node: Arc<TreeNode<T>>,
-    pub replaced_child_node: Option<Arc<TreeNode<T>>>,
+    pub new_child_node: Arc<TreeNode<T>>,
+    pub new_parent_node: Option<Arc<TreeNode<T>>>,
+    pub old_child_node: Option<Arc<TreeNode<T>>>,
     pub removed_subtree: Option<PathTree<T>>,
 }
 
@@ -125,18 +108,18 @@ pub struct InsertedOrReplacedSubtree<T>
 where
     T: PathTreeTypes,
 {
-    /// New parent node.
-    ///
-    /// Updated parent node that contains the subtree as child.
-    pub parent_node: Arc<TreeNode<T>>,
-
     /// The root node of the inserted subtree.
     pub child_node_id: T::NodeId,
 
-    /// Replaced child node.
-    pub replaced_child_node: Option<Arc<TreeNode<T>>>,
+    /// New parent node.
+    ///
+    /// Updated parent node that contains the subtree as child.
+    pub new_parent_node: Arc<TreeNode<T>>,
 
-    /// Removed subtree.
+    /// The old child node that has been updated.
+    pub old_child_node: Option<Arc<TreeNode<T>>>,
+
+    /// The removed subtree.
     pub removed_subtree: Option<PathTree<T>>,
 }
 
@@ -494,7 +477,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         new_value: NodeValue<T>,
         new_inner_value: &mut impl FnMut() -> T::InnerValue,
         try_clone_leaf_into_inner_value: impl FnOnce(&T::LeafValue) -> Option<T::InnerValue>,
-    ) -> Result<InsertOrUpdateNodeValue<T>, InsertOrUpdateNodeValueError<T>> {
+    ) -> Result<ChildNodeChangeset<T>, InsertOrUpdateNodeValueError<T>> {
         let TreeNodeParentChildContext {
             parent_node,
             child_path_segment,
@@ -515,32 +498,16 @@ impl<T: PathTreeTypes> PathTree<T> {
             // Update the root node.
             let old_root_node = Arc::clone(self.root_node());
             let new_root_node = self.update_node_value(&old_root_node, new_value)?;
-            return Ok(InsertOrUpdateNodeValue {
-                parent_node: None,
-                child_node: new_root_node,
-                replaced_child_node: Some(old_root_node),
+            return Ok(ChildNodeChangeset {
+                new_child_node: new_root_node,
+                new_parent_node: None,
+                old_child_node: Some(old_root_node),
                 removed_subtree: None,
             });
         };
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
         let child_path_segment = child_path_segment.expect("should never be empty");
-        let InsertOrUpdateChildNodeValue {
-            parent_node,
-            child_node,
-            replaced_child_node,
-            removed_subtree,
-        } = self.insert_or_update_child_node_value(
-            &parent_node,
-            child_path_segment,
-            None,
-            new_value,
-        )?;
-        Ok(InsertOrUpdateNodeValue {
-            parent_node: Some(parent_node),
-            child_node,
-            replaced_child_node,
-            removed_subtree,
-        })
+        self.insert_or_update_child_node_value(&parent_node, child_path_segment, None, new_value)
     }
 
     /// Insert or update a child node in the tree.
@@ -561,7 +528,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         child_path_segment: &T::PathSegmentRef,
         old_child_path_segment: Option<&T::PathSegmentRef>,
         new_value: NodeValue<T>,
-    ) -> Result<InsertOrUpdateChildNodeValue<T>, InsertOrUpdateNodeValueError<T>> {
+    ) -> Result<ChildNodeChangeset<T>, InsertOrUpdateNodeValueError<T>> {
         debug_assert!(self.contains_node(parent_node));
         debug_assert!(matches!(parent_node.node, Node::Inner(_)));
         let Node::Inner(inner_node) = &parent_node.node else {
@@ -574,7 +541,9 @@ impl<T: PathTreeTypes> PathTree<T> {
             });
         };
         let old_child_path_segment = old_child_path_segment.unwrap_or(child_path_segment);
-        if let Some(child_node) = inner_node
+        let (inner_node, new_child_node, old_child_node, removed_subtree) = if let Some(
+            child_node,
+        ) = inner_node
             .children
             .get(old_child_path_segment)
             .map(|node_id| self.get_node(*node_id))
@@ -582,12 +551,12 @@ impl<T: PathTreeTypes> PathTree<T> {
             let child_node_id = child_node.id;
             log::debug!("Updating value of existing child node {child_node_id}");
             let old_child_node = Arc::clone(child_node);
-            let (parent_node, new_child_node, removed_subtree) = if old_child_path_segment
+            let (inner_node, new_child_node, removed_subtree) = if old_child_path_segment
                 == child_path_segment
             {
                 // No renaming.
                 let new_child_node = self.update_node_value(&old_child_node, new_value)?;
-                (Arc::clone(parent_node), new_child_node, None)
+                (None, new_child_node, None)
             } else {
                 let new_parent = HalfEdge {
                     path_segment: child_path_segment.to_owned(),
@@ -634,81 +603,70 @@ impl<T: PathTreeTypes> PathTree<T> {
                 inner_node
                     .children
                     .insert(child_path_segment.to_owned(), child_node_id);
-                let parent_node = TreeNode {
-                    id: parent_node.id,
-                    parent: parent_node.parent.clone(),
-                    node: Node::Inner(inner_node),
-                };
-                let parent_node_id = parent_node.id;
-                let new_parent_node = Arc::new(parent_node);
-                let old_parent_node = self
-                    .nodes
-                    .insert(parent_node_id, Arc::clone(&new_parent_node));
-                debug_assert!(old_parent_node.is_some());
-                log::debug!(
-                    "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
-                    old_parent_node = old_parent_node.as_deref(),
-                    new_parent_node = *new_parent_node,
-                );
-                (new_parent_node, new_child_node, removed_subtree)
+                (Some(inner_node), new_child_node, removed_subtree)
             };
-            return Ok(InsertOrUpdateChildNodeValue {
-                parent_node: parent_node,
-                child_node: new_child_node,
-                replaced_child_node: Some(old_child_node),
+            (
+                inner_node,
+                new_child_node,
+                Some(old_child_node),
                 removed_subtree,
-            });
-        }
-        let child_node_id = self.new_node_id();
-        log::debug!("Adding new child node {child_node_id}");
-        debug_assert!(!self.nodes.contains_key(&child_node_id));
-        let new_child_node = TreeNode {
-            id: child_node_id,
-            parent: Some(HalfEdge {
-                path_segment: child_path_segment.to_owned(),
-                node_id: parent_node.id,
-            }),
-            node: Node::from_value_without_children(new_value),
-        };
-        let child_node_id = new_child_node.id;
-        let new_child_node = Arc::new(new_child_node);
-        let old_child_node = self
-            .nodes
-            .insert(child_node_id, Arc::clone(&new_child_node));
-        debug_assert!(old_child_node.is_none());
-        log::debug!(
-            "Inserted new child node {new_child_node:?}",
-            new_child_node = *new_child_node,
-        );
-        let mut inner_node = inner_node.clone();
-        if let Some(child_node_id_mut) = inner_node.children.get_mut(child_path_segment) {
-            *child_node_id_mut = child_node_id;
+            )
         } else {
-            inner_node
-                .children
-                .insert(child_path_segment.to_owned(), child_node_id);
-        }
-        let parent_node = TreeNode {
-            id: parent_node.id,
-            parent: parent_node.parent.clone(),
-            node: Node::Inner(inner_node),
+            let child_node_id = self.new_node_id();
+            log::debug!("Adding new child node {child_node_id}");
+            debug_assert!(!self.nodes.contains_key(&child_node_id));
+            let new_child_node = TreeNode {
+                id: child_node_id,
+                parent: Some(HalfEdge {
+                    path_segment: child_path_segment.to_owned(),
+                    node_id: parent_node.id,
+                }),
+                node: Node::from_value_without_children(new_value),
+            };
+            let child_node_id = new_child_node.id;
+            let new_child_node = Arc::new(new_child_node);
+            let old_child_node = self
+                .nodes
+                .insert(child_node_id, Arc::clone(&new_child_node));
+            debug_assert!(old_child_node.is_none());
+            log::debug!(
+                "Inserted new child node {new_child_node:?}",
+                new_child_node = *new_child_node,
+            );
+            let mut inner_node = inner_node.clone();
+            if let Some(child_node_id_mut) = inner_node.children.get_mut(child_path_segment) {
+                *child_node_id_mut = child_node_id;
+            } else {
+                inner_node
+                    .children
+                    .insert(child_path_segment.to_owned(), child_node_id);
+            }
+            (Some(inner_node), new_child_node, old_child_node, None)
         };
-        let parent_node_id = parent_node.id;
-        let new_parent_node = Arc::new(parent_node);
-        let old_parent_node = self
-            .nodes
-            .insert(parent_node_id, Arc::clone(&new_parent_node));
-        debug_assert!(old_parent_node.is_some());
-        log::debug!(
-            "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
-            old_parent_node = old_parent_node.as_deref(),
-            new_parent_node = *new_parent_node,
-        );
-        Ok(InsertOrUpdateChildNodeValue {
-            parent_node: new_parent_node,
-            child_node: new_child_node,
-            replaced_child_node: None,
-            removed_subtree: None,
+        let new_parent_node = inner_node.map(|inner_node| {
+            let parent_node = TreeNode {
+                id: parent_node.id,
+                parent: parent_node.parent.clone(),
+                node: Node::Inner(inner_node),
+            };
+            let parent_node_id = parent_node.id;
+            let new_parent_node = Arc::new(parent_node);
+            let old_parent_node = self
+                .nodes
+                .insert(parent_node_id, Arc::clone(&new_parent_node));
+            debug_assert!(old_parent_node.is_some());
+            log::debug!(
+                "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
+                old_parent_node = old_parent_node.as_deref(),
+                new_parent_node = *new_parent_node,
+            );
+            new_parent_node
+        });
+        Ok(ChildNodeChangeset {
+            new_child_node,
+            new_parent_node,
+            old_child_node,
+            removed_subtree,
         })
     }
 
@@ -857,11 +815,11 @@ impl<T: PathTreeTypes> PathTree<T> {
         mut subtree: Self,
     ) -> Result<InsertedOrReplacedSubtree<T>, InsertOrUpdateNodeValueError<T>> {
         debug_assert!(self.contains_node(parent_node));
-        let mut subtree_parent_node = None;
         // Initialized with the old node id, which will be replaced with the new node id
         // after the root node of the subtree has been inserted/replaced.
         let mut subtree_child_node_id = subtree.root_node_id();
-        let mut subtree_replaced_child_node = None;
+        let mut subtree_new_parent_node = None;
+        let mut subtree_old_child_node = None;
         let mut subtree_removed_subtree = None;
         {
             let subtree_node_ids = std::iter::once(subtree.root_node_id())
@@ -913,10 +871,10 @@ impl<T: PathTreeTypes> PathTree<T> {
                     Node::Inner(inner) => NodeValue::Inner(inner.value),
                     Node::Leaf(leaf) => NodeValue::Leaf(leaf.value),
                 };
-                let InsertOrUpdateChildNodeValue {
-                    parent_node,
-                    child_node,
-                    replaced_child_node,
+                let ChildNodeChangeset {
+                    new_parent_node,
+                    new_child_node,
+                    old_child_node,
                     removed_subtree,
                 } = self
                     .insert_or_update_child_node_value(
@@ -931,26 +889,26 @@ impl<T: PathTreeTypes> PathTree<T> {
                         // that `self` remains unchanged on error.
                         debug_assert_eq!(old_node_id, subtree.root_node_id());
                     })?;
-                let new_node_id = child_node.id;
+                let subtree_root_node_id = new_child_node.id;
                 if old_node_id == subtree.root_node_id() {
                     // Subtree root node.
-                    subtree_parent_node = Some(parent_node);
-                    subtree_child_node_id = new_node_id;
-                    subtree_replaced_child_node = replaced_child_node;
+                    subtree_child_node_id = subtree_root_node_id;
+                    subtree_new_parent_node = new_parent_node;
+                    subtree_old_child_node = old_child_node;
                     subtree_removed_subtree = removed_subtree;
                 } else {
                     // Subtree descendant node.
-                    debug_assert!(replaced_child_node.is_none());
+                    debug_assert!(old_child_node.is_none());
                     debug_assert!(removed_subtree.is_none());
                 }
                 debug_assert!(!old_to_new_node_id.contains_key(&old_node_id));
-                old_to_new_node_id.insert(old_node_id, new_node_id);
+                old_to_new_node_id.insert(old_node_id, subtree_root_node_id);
             }
         }
         Ok(InsertedOrReplacedSubtree {
-            parent_node: subtree_parent_node.expect("has been updated"),
             child_node_id: subtree_child_node_id,
-            replaced_child_node: subtree_replaced_child_node,
+            new_parent_node: subtree_new_parent_node.expect("has been updated"),
+            old_child_node: subtree_old_child_node,
             removed_subtree: subtree_removed_subtree,
         })
     }

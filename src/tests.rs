@@ -4,8 +4,7 @@
 use std::{borrow::Cow, sync::Arc};
 
 use crate::{
-    InsertOrUpdateChildNodeValue, MatchNodePath, MatchedNodePath, RemovedSubtree, RootPath,
-    SegmentedPath,
+    ChildNodeChangeset, MatchNodePath, MatchedNodePath, RemovedSubtree, RootPath, SegmentedPath,
 };
 
 /// A lazy path implementation for testing.
@@ -802,10 +801,10 @@ fn insert_or_update_child_node_value_leaf() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let InsertOrUpdateChildNodeValue {
-        parent_node: _,
-        child_node,
-        replaced_child_node,
+    let ChildNodeChangeset {
+        new_child_node,
+        new_parent_node: _,
+        old_child_node,
         removed_subtree,
     } = path_tree
         .insert_or_update_child_node_value(&parent_node, "bar2", Some("bar"), NodeValue::Leaf(4))
@@ -819,14 +818,16 @@ fn insert_or_update_child_node_value_leaf() {
             .node
             .leaf_value()
     );
-    // Children of the updated node have not changed.
+    // Id and children of the updated node have not changed.
+    assert_eq!(old_child_node.as_ref().unwrap().id, new_child_node.id);
     assert_eq!(
-        replaced_child_node
+        old_child_node
             .unwrap()
+            .as_ref()
             .node
             .children()
             .collect::<Vec<_>>(),
-        child_node.node.children().collect::<Vec<_>>()
+        new_child_node.node.children().collect::<Vec<_>>()
     );
     // No subtree has been removed.
     assert!(removed_subtree.is_none());
@@ -839,10 +840,10 @@ fn insert_or_update_child_node_value_leaf() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let InsertOrUpdateChildNodeValue {
-        parent_node: _,
-        child_node,
-        replaced_child_node,
+    let ChildNodeChangeset {
+        new_child_node,
+        new_parent_node: _,
+        old_child_node,
         removed_subtree,
     } = path_tree
         .insert_or_update_child_node_value(&parent_node, "baz", Some("bar2"), NodeValue::Leaf(5))
@@ -860,14 +861,16 @@ fn insert_or_update_child_node_value_leaf() {
         leaf_node_id,
         path_tree.find_node(&replaced_node_path).unwrap().id
     );
-    // Children of the updated node have not changed.
+    // Id and children of the updated node have not changed.
+    assert_eq!(old_child_node.as_ref().unwrap().id, new_child_node.id);
     assert_eq!(
-        replaced_child_node
+        old_child_node
             .unwrap()
+            .as_ref()
             .node
             .children()
             .collect::<Vec<_>>(),
-        child_node.node.children().collect::<Vec<_>>()
+        new_child_node.node.children().collect::<Vec<_>>()
     );
     // The replaced node becomes the root node of the removed subtree.
     assert!(path_tree.lookup_node(replaced_node_id).is_none());
@@ -938,10 +941,10 @@ fn insert_or_update_child_node_value_inner() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let InsertOrUpdateChildNodeValue {
-        parent_node: _,
-        child_node,
-        replaced_child_node,
+    let ChildNodeChangeset {
+        new_child_node,
+        new_parent_node: _,
+        old_child_node,
         removed_subtree,
     } = path_tree
         .insert_or_update_child_node_value(
@@ -960,14 +963,16 @@ fn insert_or_update_child_node_value_inner() {
             .node
             .inner_value()
     );
-    // Children of the updated node have not changed.
+    // Id and children of the updated node have not changed.
+    assert_eq!(old_child_node.as_ref().unwrap().id, new_child_node.id);
     assert_eq!(
-        replaced_child_node
+        old_child_node
             .unwrap()
+            .as_ref()
             .node
             .children()
             .collect::<Vec<_>>(),
-        child_node.node.children().collect::<Vec<_>>()
+        new_child_node.node.children().collect::<Vec<_>>()
     );
     // No subtree has been removed.
     assert!(removed_subtree.is_none());
@@ -980,10 +985,10 @@ fn insert_or_update_child_node_value_inner() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let InsertOrUpdateChildNodeValue {
-        parent_node: _,
-        child_node,
-        replaced_child_node,
+    let ChildNodeChangeset {
+        new_child_node,
+        new_parent_node: _,
+        old_child_node,
         removed_subtree,
     } = path_tree
         .insert_or_update_child_node_value(
@@ -1006,14 +1011,16 @@ fn insert_or_update_child_node_value_inner() {
         inner_node_id,
         path_tree.find_node(&replaced_node_path).unwrap().id
     );
-    // Children of the updated node have not changed.
+    // Id and children of the updated node have not changed.
+    assert_eq!(old_child_node.as_ref().unwrap().id, new_child_node.id);
     assert_eq!(
-        replaced_child_node
+        old_child_node
             .unwrap()
+            .as_ref()
             .node
             .children()
             .collect::<Vec<_>>(),
-        child_node.node.children().collect::<Vec<_>>()
+        new_child_node.node.children().collect::<Vec<_>>()
     );
     // The replaced node becomes the root node of the removed subtree.
     assert!(path_tree.lookup_node(replaced_node_id).is_none());
