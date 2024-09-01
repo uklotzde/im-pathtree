@@ -710,7 +710,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             // Cannot remove the root node.
             return None;
         }
-        let nodes_count_before = self.nodes_count().get();
+        let nodes_count_before = self.nodes_count();
         let node = self.nodes.remove(&node_id)?;
         // The descendants of the removed node could still be collected,
         // even though the tree is already incomplete.
@@ -768,9 +768,9 @@ impl<T: PathTreeTypes> PathTree<T> {
             new_parent_node = self.get_node(parent_node_id)
         );
         // The tree is now back in a consistent state and we can use the public API again.
-        let nodes_count_after = self.nodes_count().get();
+        let nodes_count_after = self.nodes_count();
         debug_assert!(nodes_count_before >= nodes_count_after);
-        let removed_nodes_count = nodes_count_before - nodes_count_after;
+        let removed_nodes_count = nodes_count_before.get() - nodes_count_after.get();
         let TreeNode { id, parent, node } = Arc::unwrap_or_clone(node);
         let parent = parent.expect("has a parent");
         debug_assert_eq!(parent.node_id, new_parent_node.id);
