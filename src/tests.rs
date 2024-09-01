@@ -4,7 +4,8 @@
 use std::{borrow::Cow, sync::Arc};
 
 use crate::{
-    MatchNodePath, MatchedNodePath, ParentChildTreeNode, RemovedSubtree, RootPath, SegmentedPath,
+    InsertOrUpdateChildNodeValue, MatchNodePath, MatchedNodePath, RemovedSubtree, RootPath,
+    SegmentedPath,
 };
 
 /// A lazy path implementation for testing.
@@ -801,7 +802,7 @@ fn insert_or_update_child_node_value_leaf() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let ParentChildTreeNode {
+    let InsertOrUpdateChildNodeValue {
         parent_node: _,
         child_node,
         replaced_child_node,
@@ -838,7 +839,7 @@ fn insert_or_update_child_node_value_leaf() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let ParentChildTreeNode {
+    let InsertOrUpdateChildNodeValue {
         parent_node: _,
         child_node,
         replaced_child_node,
@@ -937,7 +938,7 @@ fn insert_or_update_child_node_value_inner() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let ParentChildTreeNode {
+    let InsertOrUpdateChildNodeValue {
         parent_node: _,
         child_node,
         replaced_child_node,
@@ -979,7 +980,7 @@ fn insert_or_update_child_node_value_inner() {
             .find_node(&SlashPath::new(Cow::Borrowed("/foo")))
             .unwrap(),
     );
-    let ParentChildTreeNode {
+    let InsertOrUpdateChildNodeValue {
         parent_node: _,
         child_node,
         replaced_child_node,
