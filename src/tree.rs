@@ -574,9 +574,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             });
         };
         let old_child_path_segment = old_child_path_segment.unwrap_or(child_path_segment);
-        let (inner_node, child_node, replaced_child_node, removed_subtree) = if let Some(
-            child_node,
-        ) = inner_node
+        if let Some(child_node) = inner_node
             .children
             .get(old_child_path_segment)
             .map(|node_id| self.get_node(*node_id))
@@ -584,17 +582,13 @@ impl<T: PathTreeTypes> PathTree<T> {
             let child_node_id = child_node.id;
             log::debug!("Updating value of existing child node {child_node_id}");
             let old_child_node = Arc::clone(child_node);
-            if old_child_path_segment == child_path_segment {
+            let (parent_node, new_child_node, removed_subtree) = if old_child_path_segment
+                == child_path_segment
+            {
                 // No renaming.
                 let new_child_node = self.update_node_value(&old_child_node, new_value)?;
-                return Ok(InsertOrUpdateChildNodeValue {
-                    parent_node: Arc::clone(parent_node),
-                    child_node: new_child_node,
-                    replaced_child_node: None,
-                    removed_subtree: None,
-                });
-            }
-            let (inner_node, new_child_node, removed_subtree) = {
+                (Arc::clone(parent_node), new_child_node, None)
+            } else {
                 let new_parent = HalfEdge {
                     path_segment: child_path_segment.to_owned(),
                     node_id: parent_node.id,
@@ -636,55 +630,64 @@ impl<T: PathTreeTypes> PathTree<T> {
                     replaced_child_node.as_ref().unwrap(),
                     &old_child_node
                 ));
-                log::debug!(
-                    "Inserted new child node {new_child_node:?}",
-                    new_child_node = *new_child_node,
-                );
                 debug_assert!(!inner_node.children.contains_key(child_path_segment));
                 inner_node
                     .children
                     .insert(child_path_segment.to_owned(), child_node_id);
-                (inner_node, new_child_node, removed_subtree)
+                let parent_node = TreeNode {
+                    id: parent_node.id,
+                    parent: parent_node.parent.clone(),
+                    node: Node::Inner(inner_node),
+                };
+                let parent_node_id = parent_node.id;
+                let new_parent_node = Arc::new(parent_node);
+                let old_parent_node = self
+                    .nodes
+                    .insert(parent_node_id, Arc::clone(&new_parent_node));
+                debug_assert!(old_parent_node.is_some());
+                log::debug!(
+                    "Updated parent node {old_parent_node:?} to {new_parent_node:?}",
+                    old_parent_node = old_parent_node.as_deref(),
+                    new_parent_node = *new_parent_node,
+                );
+                (new_parent_node, new_child_node, removed_subtree)
             };
-            (
-                inner_node,
-                new_child_node,
-                Some(old_child_node),
+            return Ok(InsertOrUpdateChildNodeValue {
+                parent_node: parent_node,
+                child_node: new_child_node,
+                replaced_child_node: Some(old_child_node),
                 removed_subtree,
-            )
-        } else {
-            let child_node_id = self.new_node_id();
-            log::debug!("Adding new child node {child_node_id}");
-            debug_assert!(!self.nodes.contains_key(&child_node_id));
-            let new_child_node = TreeNode {
-                id: child_node_id,
-                parent: Some(HalfEdge {
-                    path_segment: child_path_segment.to_owned(),
-                    node_id: parent_node.id,
-                }),
-                node: Node::from_value_without_children(new_value),
-            };
-            let child_node_id = new_child_node.id;
-            let new_child_node = Arc::new(new_child_node);
-            let old_child_node = self
-                .nodes
-                .insert(child_node_id, Arc::clone(&new_child_node));
-            debug_assert!(old_child_node.is_none());
-            log::debug!(
-                "Inserted new child node {new_child_node:?}",
-                new_child_node = *new_child_node,
-            );
-            let mut inner_node = inner_node.clone();
-            if let Some(child_node_id_mut) = inner_node.children.get_mut(child_path_segment) {
-                *child_node_id_mut = child_node_id;
-            } else {
-                inner_node
-                    .children
-                    .insert(child_path_segment.to_owned(), child_node_id);
-            }
-            (inner_node, new_child_node, None, None)
+            });
+        }
+        let child_node_id = self.new_node_id();
+        log::debug!("Adding new child node {child_node_id}");
+        debug_assert!(!self.nodes.contains_key(&child_node_id));
+        let new_child_node = TreeNode {
+            id: child_node_id,
+            parent: Some(HalfEdge {
+                path_segment: child_path_segment.to_owned(),
+                node_id: parent_node.id,
+            }),
+            node: Node::from_value_without_children(new_value),
         };
-        // Update the parent node.
+        let child_node_id = new_child_node.id;
+        let new_child_node = Arc::new(new_child_node);
+        let old_child_node = self
+            .nodes
+            .insert(child_node_id, Arc::clone(&new_child_node));
+        debug_assert!(old_child_node.is_none());
+        log::debug!(
+            "Inserted new child node {new_child_node:?}",
+            new_child_node = *new_child_node,
+        );
+        let mut inner_node = inner_node.clone();
+        if let Some(child_node_id_mut) = inner_node.children.get_mut(child_path_segment) {
+            *child_node_id_mut = child_node_id;
+        } else {
+            inner_node
+                .children
+                .insert(child_path_segment.to_owned(), child_node_id);
+        }
         let parent_node = TreeNode {
             id: parent_node.id,
             parent: parent_node.parent.clone(),
@@ -703,9 +706,9 @@ impl<T: PathTreeTypes> PathTree<T> {
         );
         Ok(InsertOrUpdateChildNodeValue {
             parent_node: new_parent_node,
-            child_node,
-            replaced_child_node,
-            removed_subtree,
+            child_node: new_child_node,
+            replaced_child_node: None,
+            removed_subtree: None,
         })
     }
 
