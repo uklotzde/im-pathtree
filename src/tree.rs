@@ -16,7 +16,7 @@ pub trait NewNodeId<T> {
 
 /// Type system for [`PathTree`].
 pub trait PathTreeTypes: Clone + Default + fmt::Debug {
-    type NodeId: Clone + Copy + PartialEq + Eq + Hash + fmt::Debug + fmt::Display;
+    type NodeId: Clone + Copy + Eq + Hash + fmt::Debug + fmt::Display;
     type NewNodeId: NewNodeId<Self::NodeId> + Clone + fmt::Debug;
     type InnerValue: Clone + fmt::Debug;
     type LeafValue: Clone + fmt::Debug;

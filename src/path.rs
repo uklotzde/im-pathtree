@@ -9,7 +9,7 @@ use std::{
 };
 
 /// Owned path segment.
-pub trait PathSegment: Clone + PartialEq + Eq + Hash + fmt::Debug {
+pub trait PathSegment: Clone + Eq + Hash + fmt::Debug {
     fn empty() -> Self;
 
     /// Check if the segment is empty.
@@ -18,7 +18,7 @@ pub trait PathSegment: Clone + PartialEq + Eq + Hash + fmt::Debug {
 }
 
 /// Borrowed path segment.
-pub trait PathSegmentRef<T: PathSegment>: PartialEq + Eq + Hash + fmt::Debug {
+pub trait PathSegmentRef<T: PathSegment>: Eq + Hash + fmt::Debug {
     /// Check if the segment is empty.
     #[must_use]
     fn is_empty(&self) -> bool;
