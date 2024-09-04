@@ -279,11 +279,11 @@ impl<T: PathTreeTypes> PathTree<T> {
     /// Returns the found node and the number of resolved path segments.
     #[must_use]
     #[cfg_attr(debug_assertions, allow(clippy::missing_panics_doc))] // Never panics
-    pub fn resolve_node_path(
-        &self,
+    pub fn resolve_node_path<'a>(
+        &'a self,
         path: &T::RootPath,
         match_path: MatchNodePath,
-    ) -> Option<NodePathResolved<'_, T>> {
+    ) -> Option<NodePathResolved<'a, T>> {
         // TODO: Use a trie data structure and Aho-Corasick algo for faster lookup?
         let root_node = self.get_node(self.root_node_id);
         let mut last_visited_node = root_node;
