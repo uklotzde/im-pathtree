@@ -8,17 +8,8 @@ use std::{
     hash::Hash,
 };
 
-/// Owned path segment.
-pub trait PathSegment: Clone + Eq + Hash + fmt::Debug {
-    fn empty() -> Self;
-
-    /// Check if the segment is empty.
-    #[must_use]
-    fn is_empty(&self) -> bool;
-}
-
 /// Borrowed path segment.
-pub trait PathSegmentRef<T: PathSegment>: Eq + Hash + fmt::Debug {
+pub trait PathSegmentRef<T>: Eq + Hash + fmt::Debug {
     /// Check if the segment is empty.
     #[must_use]
     fn is_empty(&self) -> bool;
@@ -28,16 +19,6 @@ pub trait PathSegmentRef<T: PathSegment>: Eq + Hash + fmt::Debug {
     // for Cow<'a, str> currently prevents this.
     #[must_use]
     fn to_owned(&self) -> T;
-}
-
-impl PathSegment for String {
-    fn empty() -> Self {
-        Self::new()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.as_str().is_empty()
-    }
 }
 
 impl PathSegmentRef<String> for str {
@@ -50,16 +31,6 @@ impl PathSegmentRef<String> for str {
     }
 }
 
-impl<'a> PathSegment for Cow<'a, str> {
-    fn empty() -> Self {
-        Cow::Borrowed("")
-    }
-
-    fn is_empty(&self) -> bool {
-        self.as_ref().is_empty()
-    }
-}
-
 impl<'a> PathSegmentRef<Cow<'a, str>> for str {
     fn is_empty(&self) -> bool {
         self.is_empty()
@@ -67,16 +38,6 @@ impl<'a> PathSegmentRef<Cow<'a, str>> for str {
 
     fn to_owned(&self) -> Cow<'a, str> {
         Cow::Owned(String::from(self))
-    }
-}
-
-impl PathSegment for OsString {
-    fn empty() -> Self {
-        Self::new()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.as_os_str().is_empty()
     }
 }
 
@@ -91,9 +52,7 @@ impl PathSegmentRef<OsString> for OsStr {
 }
 
 /// Decomposition of a path into segments.
-pub trait SegmentedPath<S: PathSegment, R: PathSegmentRef<S> + ?Sized>:
-    Clone + Eq + Hash + fmt::Debug
-{
+pub trait SegmentedPath<S, R: PathSegmentRef<S> + ?Sized>: Clone + Eq + Hash + fmt::Debug {
     /// Iterate over all path segments.
     ///
     /// All segments are guaranteed to be non-empty.
@@ -111,7 +70,7 @@ pub trait SegmentedPath<S: PathSegment, R: PathSegmentRef<S> + ?Sized>:
 }
 
 /// Absolute path with a root.
-pub trait RootPath<S: PathSegment, R: PathSegmentRef<S> + ?Sized>: SegmentedPath<S, R> {
+pub trait RootPath<S, R: PathSegmentRef<S> + ?Sized>: SegmentedPath<S, R> {
     /// Check if the path equals the root path.
     #[must_use]
     fn is_root(&self) -> bool;

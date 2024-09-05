@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef, HashMap, InnerNode, LeafNode, Node, NodeValue,
-    PathSegment, PathSegmentRef, RootPath, SegmentedPath as _,
+    PathSegmentRef, RootPath, SegmentedPath as _,
 };
 
 pub trait NewNodeId<T> {
@@ -20,7 +20,7 @@ pub trait PathTreeTypes: Clone + Default + fmt::Debug {
     type NewNodeId: NewNodeId<Self::NodeId> + Clone + fmt::Debug;
     type InnerValue: Clone + fmt::Debug;
     type LeafValue: Clone + fmt::Debug;
-    type PathSegment: PathSegment + Borrow<Self::PathSegmentRef>;
+    type PathSegment: Clone + Eq + Hash + fmt::Debug + Borrow<Self::PathSegmentRef>;
     type PathSegmentRef: PathSegmentRef<Self::PathSegment> + ?Sized;
     type RootPath: RootPath<Self::PathSegment, Self::PathSegmentRef>;
 }

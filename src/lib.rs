@@ -10,7 +10,7 @@ mod node;
 pub use self::node::{DepthFirstDescendantsIter, InnerNode, LeafNode, Node, NodeValue};
 
 mod path;
-pub use self::path::{PathSegment, PathSegmentRef, RootPath, SegmentedPath};
+pub use self::path::{PathSegmentRef, RootPath, SegmentedPath};
 
 mod tree;
 pub use self::tree::{
