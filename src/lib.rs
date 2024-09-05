@@ -4,13 +4,13 @@
 //! Immutable, path-addressable tree data structure.
 
 mod edge;
-pub use self::edge::{HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef};
+pub use self::edge::{HalfEdge, HalfEdgeOwned, HalfEdgeTreeNode};
 
 mod node;
 pub use self::node::{DepthFirstDescendantsIter, InnerNode, LeafNode, Node, NodeValue};
 
 mod path;
-pub use self::path::{PathSegmentRef, RootPath, SegmentedPath};
+pub use self::path::{PathSegment, RootPath, SegmentedPath};
 
 mod tree;
 pub use self::tree::{

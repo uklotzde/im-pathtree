@@ -45,13 +45,13 @@ impl<'a> SlashPath<'a> {
     }
 }
 
-impl RootPath<Cow<'static, str>, str> for SlashPath<'_> {
+impl RootPath<str> for SlashPath<'_> {
     fn is_root(&self) -> bool {
         *self == Self::ROOT
     }
 }
 
-impl SegmentedPath<Cow<'static, str>, str> for SlashPath<'_> {
+impl SegmentedPath<str> for SlashPath<'_> {
     fn segments(&self) -> Box<dyn Iterator<Item = &str> + '_> {
         Box::new(self.segments())
     }
@@ -117,11 +117,15 @@ struct PathTreeTypes;
 impl crate::PathTreeTypes for PathTreeTypes {
     type NodeId = usize;
     type NewNodeId = NewNodeId;
+    type PathSegmentOwned = Cow<'static, str>;
+    type PathSegment = str;
     type RootPath = SlashPath<'static>;
-    type PathSegment = Cow<'static, str>;
-    type PathSegmentRef = str;
     type InnerValue = isize;
     type LeafValue = usize;
+
+    fn path_segment_to_owned(path_segment: &Self::PathSegment) -> Self::PathSegmentOwned {
+        Cow::Owned(path_segment.to_owned())
+    }
 }
 
 type PathTree = crate::PathTree<PathTreeTypes>;

@@ -6,8 +6,8 @@ use std::{borrow::Borrow, fmt, hash::Hash, marker::PhantomData, num::NonZeroUsiz
 use thiserror::Error;
 
 use crate::{
-    HalfEdge, HalfEdgeRef, HalfEdgeTreeNodeRef, HashMap, InnerNode, LeafNode, Node, NodeValue,
-    PathSegmentRef, RootPath, SegmentedPath as _,
+    HalfEdge, HalfEdgeOwned, HalfEdgeTreeNode, HashMap, InnerNode, LeafNode, Node, NodeValue,
+    PathSegment, RootPath, SegmentedPath as _,
 };
 
 pub trait NewNodeId<T> {
@@ -20,9 +20,11 @@ pub trait PathTreeTypes: Clone + Default + fmt::Debug {
     type NewNodeId: NewNodeId<Self::NodeId> + Clone + fmt::Debug;
     type InnerValue: Clone + fmt::Debug;
     type LeafValue: Clone + fmt::Debug;
-    type PathSegment: Clone + Eq + Hash + fmt::Debug + Borrow<Self::PathSegmentRef>;
-    type PathSegmentRef: PathSegmentRef<Self::PathSegment> + ?Sized;
-    type RootPath: RootPath<Self::PathSegment, Self::PathSegmentRef>;
+    type PathSegmentOwned: Clone + Eq + Hash + fmt::Debug + Borrow<Self::PathSegment>;
+    type PathSegment: PathSegment + ?Sized;
+    type RootPath: RootPath<Self::PathSegment> + ?Sized;
+
+    fn path_segment_to_owned(path_segment: &Self::PathSegment) -> Self::PathSegmentOwned;
 }
 
 /// A conflicting path from a parent to a child node.
@@ -32,7 +34,7 @@ where
     T: PathTreeTypes,
 {
     pub parent_node: Arc<TreeNode<T>>,
-    pub child_path_segment: T::PathSegment,
+    pub child_path_segment: T::PathSegmentOwned,
 }
 
 #[derive(Debug, Error)]
@@ -112,7 +114,7 @@ where
     ///
     /// Path segment between the parent node and its former child node,
     /// which has become the root node of the removed subtree.
-    pub child_path_segment: T::PathSegment,
+    pub child_path_segment: T::PathSegmentOwned,
 
     /// Removed subtree.
     ///
@@ -166,7 +168,7 @@ where
     T: PathTreeTypes,
 {
     parent_node: Option<Arc<TreeNode<T>>>,
-    child_path_segment: Option<&'a T::PathSegmentRef>,
+    child_path_segment: Option<&'a T::PathSegment>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -382,7 +384,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                 Err(parent_node) => {
                     return Err(TreeNodeParentChildPathConflict {
                         parent_node,
-                        child_path_segment: path_segment.to_owned(),
+                        child_path_segment: T::path_segment_to_owned(path_segment),
                     });
                 }
             };
@@ -402,8 +404,8 @@ impl<T: PathTreeTypes> PathTree<T> {
                 debug_assert_ne!(child_node_id, next_parent_node.id);
                 let child_node = TreeNode {
                     id: child_node_id,
-                    parent: Some(HalfEdge {
-                        path_segment: path_segment.to_owned(),
+                    parent: Some(HalfEdgeOwned {
+                        path_segment: T::path_segment_to_owned(path_segment),
                         node_id: next_parent_node.id,
                     }),
                     node: Node::Inner(InnerNode::new(new_inner_value())),
@@ -418,7 +420,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                 let mut inner_node = inner_node.clone();
                 let old_child_node_id = inner_node
                     .children
-                    .insert(path_segment.to_owned(), child_node_id);
+                    .insert(T::path_segment_to_owned(path_segment), child_node_id);
                 debug_assert!(old_child_node_id.is_none());
                 // Replace the parent node with the modified one.
                 update_parent_node(
@@ -451,8 +453,8 @@ impl<T: PathTreeTypes> PathTree<T> {
                 return Err(TreeNodeParentChildPathConflict {
                     parent_node,
                     child_path_segment: child_path_segment
-                        .expect("child path segment should exist")
-                        .to_owned(),
+                        .map(T::path_segment_to_owned)
+                        .expect("child path segment should exist"),
                 });
             }
         };
@@ -531,8 +533,8 @@ impl<T: PathTreeTypes> PathTree<T> {
     pub fn insert_or_update_child_node_value(
         &mut self,
         parent_node: &Arc<TreeNode<T>>,
-        child_path_segment: &T::PathSegmentRef,
-        old_child_path_segment: Option<&T::PathSegmentRef>,
+        child_path_segment: &T::PathSegment,
+        old_child_path_segment: Option<&T::PathSegment>,
         new_value: NodeValue<T>,
     ) -> Result<NodeInsertedOrUpdated<T>, InsertOrUpdateNodeValueError<T>> {
         debug_assert!(self.contains_node(parent_node));
@@ -541,7 +543,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             return Err(InsertOrUpdateNodeValueError::PathConflict {
                 conflict: TreeNodeParentChildPathConflict {
                     parent_node: Arc::clone(parent_node),
-                    child_path_segment: child_path_segment.to_owned(),
+                    child_path_segment: T::path_segment_to_owned(child_path_segment),
                 },
                 value: new_value,
             });
@@ -560,8 +562,8 @@ impl<T: PathTreeTypes> PathTree<T> {
                 let new_child_node = self.update_node_value(&old_child_node, new_value)?;
                 (new_child_node, None)
             } else {
-                let new_parent = HalfEdge {
-                    path_segment: child_path_segment.to_owned(),
+                let new_parent = HalfEdgeOwned {
+                    path_segment: T::path_segment_to_owned(child_path_segment),
                     node_id: parent_node.id,
                 };
                 let updated_child_node =
@@ -604,7 +606,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                 debug_assert!(!inner_node.children.contains_key(child_path_segment));
                 inner_node
                     .children
-                    .insert(child_path_segment.to_owned(), child_node_id);
+                    .insert(T::path_segment_to_owned(child_path_segment), child_node_id);
                 (new_child_node, Some((inner_node, removed_subtree)))
             }
         } else {
@@ -613,8 +615,8 @@ impl<T: PathTreeTypes> PathTree<T> {
             debug_assert!(!self.nodes.contains_key(&child_node_id));
             let new_child_node = TreeNode {
                 id: child_node_id,
-                parent: Some(HalfEdge {
-                    path_segment: child_path_segment.to_owned(),
+                parent: Some(HalfEdgeOwned {
+                    path_segment: T::path_segment_to_owned(child_path_segment),
                     node_id: parent_node.id,
                 }),
                 node: Node::from_value_without_children(new_value),
@@ -635,7 +637,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             } else {
                 inner_node
                     .children
-                    .insert(child_path_segment.to_owned(), child_node_id);
+                    .insert(T::path_segment_to_owned(child_path_segment), child_node_id);
             }
             (new_child_node, Some((inner_node, None)))
         };
@@ -706,7 +708,7 @@ impl<T: PathTreeTypes> PathTree<T> {
             .node
             .descendants(self)
             .map(
-                |HalfEdgeRef {
+                |HalfEdge {
                      path_segment: _,
                      node_id,
                  }| node_id,
@@ -727,7 +729,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         // still references the root node of the removed subtree as a child.
         let new_parent_node = {
             debug_assert!(node.parent.is_some());
-            let HalfEdge {
+            let HalfEdgeOwned {
                 path_segment: parent_path_segment,
                 node_id: parent_node_id,
             } = node.parent.as_ref().expect("has parent");
@@ -790,8 +792,8 @@ impl<T: PathTreeTypes> PathTree<T> {
     pub fn insert_or_replace_subtree(
         &mut self,
         parent_node: &Arc<TreeNode<T>>,
-        child_path_segment: &T::PathSegmentRef,
-        old_child_path_segment: Option<&T::PathSegmentRef>,
+        child_path_segment: &T::PathSegment,
+        old_child_path_segment: Option<&T::PathSegment>,
         mut subtree: Self,
     ) -> Result<SubtreeInsertedOrReplaced<T>, InsertOrUpdateNodeValueError<T>> {
         debug_assert!(self.contains_node(parent_node));
@@ -802,7 +804,7 @@ impl<T: PathTreeTypes> PathTree<T> {
         {
             let subtree_node_ids = std::iter::once(subtree.root_node_id())
                 .chain(subtree.root_node().node.descendants(&subtree).map(
-                    |HalfEdgeRef {
+                    |HalfEdge {
                          path_segment: _,
                          node_id,
                      }| node_id,
@@ -841,7 +843,7 @@ impl<T: PathTreeTypes> PathTree<T> {
                         debug_assert_eq!(old_node_id, subtree.root_node_id());
                         (
                             parent_node,
-                            child_path_segment.to_owned(),
+                            T::path_segment_to_owned(child_path_segment),
                             old_child_path_segment,
                         )
                     };
@@ -943,7 +945,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     pub fn ancestor_nodes<'a>(
         &'a self,
         node: &'a Arc<TreeNode<T>>,
-    ) -> impl Iterator<Item = HalfEdgeTreeNodeRef<'_, T>> + Clone {
+    ) -> impl Iterator<Item = HalfEdgeTreeNode<'_, T>> + Clone {
         AncestorTreeNodeIter::new(self, node)
     }
 
@@ -962,7 +964,7 @@ impl<T: PathTreeTypes> PathTree<T> {
     pub fn descendant_nodes<'a>(
         &'a self,
         node: &'a Arc<TreeNode<T>>,
-    ) -> impl Iterator<Item = HalfEdgeRef<'a, T>> {
+    ) -> impl Iterator<Item = HalfEdge<'a, T>> {
         debug_assert!(self.contains_node(node));
         node.node.descendants(self)
     }
@@ -984,7 +986,7 @@ pub struct TreeNode<T: PathTreeTypes> {
     /// Link to the parent node.
     ///
     /// Must be `None` for the root node and `Some` for all other nodes.
-    pub parent: Option<HalfEdge<T>>,
+    pub parent: Option<HalfEdgeOwned<T>>,
 
     /// The actual content of this node.
     pub node: Node<T>,
@@ -1008,7 +1010,7 @@ impl<T: PathTreeTypes> TreeNode<T> {
     /// current value type of the node, depending on its children.
     fn try_clone_with_parent_and_value(
         &self,
-        new_parent: Option<HalfEdge<T>>,
+        new_parent: Option<HalfEdgeOwned<T>>,
         new_value: NodeValue<T>,
     ) -> Result<Self, UpdateNodeValueError<T>> {
         let new_node = match &self.node {
@@ -1122,12 +1124,12 @@ impl<'a, T: PathTreeTypes> AncestorTreeNodeIter<'a, T> {
 }
 
 impl<'a, T: PathTreeTypes> Iterator for AncestorTreeNodeIter<'a, T> {
-    type Item = HalfEdgeTreeNodeRef<'a, T>;
+    type Item = HalfEdgeTreeNode<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let parent = self.next_node.as_ref()?.parent.as_ref()?;
         self.next_node = self.tree.lookup_node(parent.node_id);
-        self.next_node.map(|node| HalfEdgeTreeNodeRef {
+        self.next_node.map(|node| HalfEdgeTreeNode {
             path_segment: parent.path_segment.borrow(),
             node,
         })

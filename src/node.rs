@@ -3,7 +3,7 @@
 
 use std::borrow::Borrow as _;
 
-use crate::{HalfEdgeRef, HashMap, PathTree, PathTreeTypes};
+use crate::{HalfEdge, HashMap, PathTree, PathTreeTypes};
 
 const DESCENDANTS_ITER_STACK_CAPACITY: usize = 1024;
 
@@ -75,7 +75,7 @@ where
     /// Returns an iterator over all children of this node
     ///
     /// Only includes direct children, not grandchildren or other descendants.
-    pub fn children(&self) -> impl ExactSizeIterator<Item = HalfEdgeRef<'_, T>> + '_ {
+    pub fn children(&self) -> impl ExactSizeIterator<Item = HalfEdge<'_, T>> + '_ {
         match self {
             Self::Inner(inner) => itertools::Either::Left(inner.children()),
             Self::Leaf(_) => itertools::Either::Right(std::iter::empty()),
@@ -97,7 +97,7 @@ where
     /// Find a child node by its path segment.
     ///
     /// Returns the id of the child node or `None` if not found.
-    pub fn find_child(&self, child_path_segment: &T::PathSegmentRef) -> Option<T::NodeId> {
+    pub fn find_child(&self, child_path_segment: &T::PathSegment) -> Option<T::NodeId> {
         match self {
             Self::Inner(inner) => inner.find_child(child_path_segment),
             Self::Leaf(_) => None,
@@ -128,7 +128,7 @@ pub struct InnerNode<T>
 where
     T: PathTreeTypes,
 {
-    pub(crate) children: HashMap<T::PathSegment, T::NodeId>,
+    pub(crate) children: HashMap<T::PathSegmentOwned, T::NodeId>,
     pub value: T::InnerValue,
 }
 
@@ -147,10 +147,10 @@ where
     /// Edges to children of this node
     ///
     /// In arbitrary but stable ordering.
-    pub fn children(&self) -> impl ExactSizeIterator<Item = HalfEdgeRef<'_, T>> + '_ {
+    pub fn children(&self) -> impl ExactSizeIterator<Item = HalfEdge<'_, T>> + '_ {
         self.children
             .iter()
-            .map(|(path_segment, node_id)| HalfEdgeRef {
+            .map(|(path_segment, node_id)| HalfEdge {
                 path_segment: path_segment.borrow(),
                 node_id: *node_id,
             })
@@ -168,7 +168,7 @@ where
     /// Find a child node by its path segment.
     ///
     /// Returns the id of the child node or `None` if not found.
-    pub fn find_child(&self, child_path_segment: &T::PathSegmentRef) -> Option<T::NodeId> {
+    pub fn find_child(&self, child_path_segment: &T::PathSegment) -> Option<T::NodeId> {
         self.children.get(child_path_segment).copied()
     }
 
@@ -189,7 +189,7 @@ where
         self.children().fold(
             0,
             |count,
-             HalfEdgeRef {
+             HalfEdge {
                  path_segment: _,
                  node_id,
              }| {
@@ -212,7 +212,7 @@ where
     T: PathTreeTypes,
 {
     tree: &'a PathTree<T>,
-    children_stack: Vec<HalfEdgeRef<'a, T>>,
+    children_stack: Vec<HalfEdge<'a, T>>,
 }
 
 impl<'a, T> DepthFirstDescendantsIter<'a, T>
@@ -244,7 +244,7 @@ impl<'a, T> Iterator for DepthFirstDescendantsIter<'a, T>
 where
     T: PathTreeTypes,
 {
-    type Item = HalfEdgeRef<'a, T>;
+    type Item = HalfEdge<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let child = self.children_stack.pop()?;
