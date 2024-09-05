@@ -143,6 +143,12 @@ const _: () = {
     let _ = assert_sync::<PathTree>;
 };
 
+// Finds a node by a SlashPath with an arbitrary lifetime.
+// TODO: This is not possible yet!
+// fn find_tree_node<'a>(tree: &'a PathTree, path: &SlashPath<'_>) -> Option<&'a Arc<crate::TreeNode<PathTreeTypes>>> {
+//     tree.find_node(path)
+// }
+
 #[test]
 fn single_leaf_node() {
     let mut path_tree = PathTree::new(Default::default(), NodeValue::Leaf(23));
