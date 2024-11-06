@@ -18,6 +18,7 @@ clippy:
 # Run tests with selected feature selections
 test:
     RUST_BACKTRACE=1 cargo test --locked --no-default-features -- --nocapture
+    # Enable all features, including "expensive-debug-assertions".
     RUST_BACKTRACE=1 cargo test --locked --all-features -- --nocapture
 
 # Set up (and update) tooling

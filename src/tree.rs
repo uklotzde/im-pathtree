@@ -919,19 +919,24 @@ impl<T: PathTreeTypes> PathTree<T> {
 
     /// Total number of nodes in the tree.
     ///
-    /// In constant time, i.e. O(1).
+    /// Executed in constant time, i.e. O(1). But only if not both
+    /// debug assertions and the feature "expensive-debug-assertions"
+    /// are enabled.
     #[must_use]
     pub fn nodes_count(&self) -> NonZeroUsize {
         debug_assert!(!self.nodes.is_empty());
         let nodes_count = self.nodes.len();
-        // Verify invariants
-        debug_assert_eq!(
-            nodes_count,
-            1 + self.root_node().node.descendants_count(self)
-        );
-        debug_assert_eq!(nodes_count, self.nodes().count());
+        #[cfg(feature = "expensive-debug-assertions")]
+        {
+            // Verify invariants
+            debug_assert_eq!(
+                nodes_count,
+                1 + self.root_node().node.descendants_count(self)
+            );
+            debug_assert_eq!(nodes_count, self.nodes().count());
+        }
+        // SAFETY: A tree always contains at least a root node.
         debug_assert!(nodes_count > 0);
-        // SAFETY: A tree always contains a root node.
         #[allow(unsafe_code)]
         unsafe {
             NonZeroUsize::new_unchecked(nodes_count)

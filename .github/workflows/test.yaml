@@ -42,4 +42,5 @@ jobs:
           shared-key: ${{ github.workflow }}-${{ github.job }}
 
       - name: Run tests
+        # Enable all features, including "expensive-debug-assertions".
         run: cargo test --locked --all-features

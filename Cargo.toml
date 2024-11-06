@@ -24,6 +24,8 @@ im = { version = "15.1.0", optional = true }
 [features]
 "default" = ["im"]
 "im" = ["dep:im"]
+# Enables additional debug assertions that may severely impact the runtime performance.
+"expensive-debug-assertions" = []
 
 [lints.rust]
 future_incompatible = "warn"
