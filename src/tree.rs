@@ -3,7 +3,7 @@
 
 use std::{borrow::Borrow, fmt, hash::Hash, marker::PhantomData, num::NonZeroUsize, sync::Arc};
 
-use thiserror::Error;
+use derive_more::{Display, Error};
 
 use crate::{
     HalfEdge, HalfEdgeOwned, HalfEdgeTreeNode, HashMap, InnerNode, LeafNode, Node, NodeValue,
@@ -37,26 +37,26 @@ where
     pub child_path_segment: T::PathSegmentOwned,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Display, Error)]
 pub enum InsertOrUpdateNodeValueError<T>
 where
     T: PathTreeTypes,
 {
-    #[error("path conflict")]
+    #[display("path conflict")]
     PathConflict {
         conflict: TreeNodeParentChildPathConflict<T>,
         value: NodeValue<T>,
     },
-    #[error("value type mismatch")]
+    #[display("value type mismatch")]
     ValueTypeMismatch { value: NodeValue<T> },
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Display, Error)]
 pub enum UpdateNodeValueError<T>
 where
     T: PathTreeTypes,
 {
-    #[error("value type mismatch")]
+    #[display("value type mismatch")]
     ValueTypeMismatch { value: NodeValue<T> },
 }
 
